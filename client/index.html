@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BLACKSITE-17</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #cfe; font-family: monospace; overflow: hidden; touch-action: none; }
+  canvas { display: block; }
+  #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #050a08; z-index: 5; }
+  #menu h1 { letter-spacing: 8px; color: #6f9; margin: 0 0 10px; text-shadow: 0 0 12px #3f8; }
+  input, button { font: inherit; padding: 10px 14px; background: #0b1511; color: #cfe; border: 1px solid #3a6; border-radius: 4px; }
+  button { cursor: pointer; } button:hover { background: #163; }
+  #err { color: #f66; min-height: 1em; }
+  #hud { position: fixed; left: 10px; top: 10px; display: none; text-shadow: 0 0 4px #000; pointer-events: none; z-index: 3; }
+  #msg { position: fixed; left: 0; right: 0; top: 40%; text-align: center; font-size: 28px; display: none; z-index: 3; pointer-events: none; text-shadow: 0 0 8px #000; }
+  #cross { position: fixed; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: #6f9a; border-radius: 50%; display: none; }
+  .tb { position: fixed; display: none; width: 70px; height: 70px; border-radius: 50%; opacity: .6; z-index: 4; }
+  #bJ { right: 20px; bottom: 100px; } #bE { right: 100px; bottom: 30px; } #bC { right: 100px; bottom: 120px; } #bS { right: 20px; bottom: 20px; }
+  #fx { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 2; background: #fff; }
+  #bF { right: 190px; bottom: 30px; }
+  #lobby { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #000b; z-index: 4; text-align: center; padding: 10px; }
+  #lobby .sel { background: #1c5; color: #000; }
+  #lobby button:disabled { opacity: .5; }
+  #msg { white-space: pre-line; }
+  #bM { right: 270px; bottom: 30px; }
+  #bG { right: 190px; bottom: 120px; }
+  #lobby { overflow-y: auto; justify-content: flex-start; padding-top: 20px; }
+  #vig { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.65) 100%); }
+  #hurt { position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(180,0,0,.85) 100%); }
+  @keyframes flick { 0%,92%,100% { opacity: 1 } 94% { opacity: .4 } 96% { opacity: .9 } 97% { opacity: .3 } }
+  #menu h1 { animation: flick 5s infinite; font-size: 42px; }
+  #mini { position: fixed; right: 10px; top: 10px; display: none; z-index: 3; pointer-events: none; border: 1px solid #3a6; border-radius: 4px; }
+  @media (pointer: coarse) { #mini { width: 110px; height: 110px; } }
+  #grain { position: fixed; left: -50%; top: -50%; width: 200%; height: 200%; pointer-events: none; z-index: 1; opacity: .07; mix-blend-mode: overlay; animation: grain .6s steps(4) infinite; }
+  @keyframes grain { 0% { transform: translate(0,0) } 25% { transform: translate(-5%,3%) } 50% { transform: translate(4%,-4%) } 75% { transform: translate(-3%,-2%) } 100% { transform: translate(0,0) } }
+</style>
+</head>
+<body>
+<div id="menu">
+  <h1>BLACKSITE-17</h1>
+  <input id="name" placeholder="Your name" maxlength="14">
+  <button id="create">Create room</button>
+  <div><input id="code" placeholder="ROOM CODE" maxlength="4" size="8" style="text-transform:uppercase"> <button id="join">Join</button></div>
+  <div id="err"></div>
+  <small>WASD move · Shift sprint · C crouch · Space jump · Hold E revive teammate · F pulse (stuns enemies) · 1-4 emotes · G grab/throw cells</small>
+</div>
+<canvas id="mini" width="150" height="150"></canvas><div id="grain"></div><div id="vig"></div><div id="hurt"></div><div id="lobby"></div><div id="fx"></div><div id="hud"></div><div id="msg"></div><div id="cross"></div>
+<button class="tb" id="bJ">JUMP</button><button class="tb" id="bE">E</button><button class="tb" id="bC">CRCH</button><button class="tb" id="bS">RUN</button><button class="tb" id="bF">PULSE</button><button class="tb" id="bM">EMOTE</button><button class="tb" id="bG">GRAB</button>
+<script type="importmap">{ "imports": { "three": "/vendor/three/build/three.module.js" } }</script>
+<script type="module" src="/client/main.js"></script>
+</body>
+</html>
