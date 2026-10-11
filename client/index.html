@@ -48,6 +48,71 @@
   #prompt b { color: #fd3; }
   #brief { position: fixed; left: 0; right: 0; top: 22%; text-align: center; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 1s; text-shadow: 0 0 12px #000; }
   #brief h2 { letter-spacing: 6px; font-size: 34px; margin: 0; color: #8fc; } #brief div { margin-top: 8px; font-size: 15px; }
+  /* Mission selection: scoped to the room lobby; the initial menu is unchanged. */
+  #lobby { box-sizing: border-box; padding: 24px 16px 48px; background: rgba(2,9,8,.94); text-align: left; align-items: stretch; }
+  #lobby .lobby-shell { width: min(1120px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  #lobby .lobby-header { display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; border-bottom: 1px solid #285540; padding-bottom: 18px; }
+  #lobby .lobby-header h2 { margin: 5px 0; color: #8fffc2; letter-spacing: 3px; }
+  #lobby .lobby-header p, #lobby .lobby-section-title span { color: #a1b8ab; font-size: 12px; margin: 0; }
+  #lobby .lobby-eyebrow, #lobby .mission-card-number { color: #65c998; letter-spacing: 2px; font-size: 11px; }
+  #lobby .lobby-squad { display: flex; gap: 8px; flex-wrap: wrap; max-width: 520px; }
+  #lobby .lobby-squad span { background: #101d18; border: 1px solid #345744; border-radius: 5px; padding: 8px; font-size: 12px; }
+  #lobby .lobby-section-title { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+  #lobby .lobby-section-title h3, #lobby .lobby-loadout h3 { margin: 0; letter-spacing: 2px; }
+  #lobby .mission-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,220px),1fr)); gap: 14px; }
+  #lobby .facility-heading { grid-column: 1 / -1; margin: 14px 0 0; padding: 10px 0 7px; border-bottom: 1px solid #2d5843; color: #9fffc6; letter-spacing: 1px; }
+  #lobby .mission-card { min-width: 0; width: 100%; padding: 10px; text-align: left; display: flex; flex-direction: column; gap: 10px; background: #0d1b16; border: 1px solid #315b46; border-radius: 9px; color: #e1f5e9; box-shadow: none; }
+  #lobby .mission-card:hover { background: #183328; border-color: #6eac88; }
+  #lobby .mission-card.sel { background: #123927; border: 2px solid #7effae; padding: 9px; color: #fff; }
+  #lobby .mission-card:disabled { opacity: .85; cursor: default; }
+  #lobby .mission-map { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; border-radius: 5px; border: 1px solid #305a48; box-sizing: border-box; }
+  #lobby .mission-card-info { display: flex; flex-direction: column; gap: 7px; flex: 1; }
+  #lobby .mission-card-info strong { font-size: 16px; }
+  #lobby .mission-objective { font-size: 12px; color: #b7d2c2; line-height: 1.55; overflow-wrap: anywhere; }
+  #lobby .mission-objective b { display: block; color: #7effae; font-size: 10px; letter-spacing: 1px; }
+  #lobby .mission-reward { margin-top: auto; font-size: 11px; color: #e7cf75; }
+  #lobby .lobby-selection, #lobby .lobby-loadout, #lobby .lobby-footer { padding: 18px; border: 1px solid #2b5640; border-radius: 8px; background: #0a1712; }
+  #lobby .lobby-selection h3 { margin: 0 0 12px; color: #9fffc6; }
+  #lobby .lobby-selection p { line-height: 1.5; }
+  #lobby .lobby-loadout { display: flex; flex-direction: column; gap: 12px; }
+  #lobby .lobby-loadout button { margin: 3px; }
+  #lobby .lobby-footer { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
+  #lobby .lobby-ready { min-width: 200px; font-size: 17px; font-weight: bold; background: #1c5; color: #03130b; }
+  @media (max-width: 500px) { #lobby { padding: 14px 10px 40px; } #lobby .mission-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; } #lobby .mission-card { padding: 7px; } #lobby .mission-card.sel { padding: 6px; } #lobby .mission-card-info strong { font-size: 13px; } #lobby .mission-objective { font-size: 11px; } }
+  /* Loadout refresh: lobby only, preserving original menu and game controls. */
+  #lobby .lobby-loadout { gap: 16px; padding: 20px; background: #08130f; }
+  #lobby .loadout-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding-bottom: 15px; border-bottom: 1px solid #315340; }
+  #lobby .loadout-header h3 { margin: 6px 0; color: #d9ffe8; font-size: 23px; }
+  #lobby .loadout-header p, #lobby .loadout-panel-heading p { margin: 0; color: #9eb7a9; font-size: 12px; line-height: 1.6; }
+  #lobby .loadout-wallet { display: flex; flex-direction: column; gap: 5px; padding: 12px 16px; background: #16231b; border: 1px solid #506c44; border-radius: 9px; }
+  #lobby .loadout-wallet small { color: #a5b6a6; font-size: 10px; letter-spacing: 1px; }
+  #lobby .loadout-wallet strong { font-size: 21px; color: #f3d977; }
+  #lobby .loadout-wallet strong span { font-size: 12px; font-weight: normal; }
+  #lobby .loadout-panel { padding: 16px; background: #0d1e17; border: 1px solid #294b37; border-radius: 10px; min-width: 0; }
+  #lobby .loadout-panel-heading { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+  #lobby .loadout-icon { width: 38px; height: 38px; display: grid; place-items: center; flex-shrink: 0; font-size: 22px; background: #183c29; border: 1px solid #396c4b; border-radius: 9px; color: #9affbe; }
+  #lobby .loadout-panel h4 { margin: 0 0 4px; font-size: 15px; letter-spacing: 1.5px; color: #dcffe9; }
+  #lobby .loadout-colours { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  #lobby .loadout-colours button { margin: 0; }
+  #lobby .loadout-auto { height: 42px; padding: 0 16px; border-radius: 8px; }
+  #lobby .loadout-swatch { width: 42px; height: 42px; padding: 5px; border-radius: 9px; background: #101b16; border: 2px solid #335442; display: grid; place-items: center; }
+  #lobby .loadout-swatch span { display: block; width: 100%; height: 100%; border-radius: 5px; background: var(--swatch); }
+  #lobby .loadout-swatch.active, #lobby .loadout-auto.active { outline: 2px solid #c6ffdc; outline-offset: 2px; }
+  #lobby .loadout-items { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,180px),1fr)); gap: 12px; }
+  #lobby .loadout-item { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid #355744; background: #10241a; border-radius: 9px; }
+  #lobby .loadout-item.is-equipped { border-color: #8beab0; background: #153525; }
+  #lobby .loadout-item-top { display: flex; align-items: center; justify-content: space-between; gap: 5px; min-height: 32px; }
+  #lobby .loadout-item-symbol { font-size: 23px; color: #9de7b8; }
+  #lobby .loadout-item-status { font-size: 9px; letter-spacing: .5px; color: #e8d78d; }
+  #lobby .loadout-item strong { font-size: 14px; color: #eafff0; }
+  #lobby .loadout-item p { flex: 1; font-size: 11px; line-height: 1.5; color: #a8c2b1; margin: 0; overflow-wrap: anywhere; }
+  #lobby .loadout-item .loadout-action { width: 100%; margin: 4px 0 0; min-height: 40px; padding: 7px; border-radius: 7px; background: #19412b; }
+  #lobby .loadout-item .loadout-action.equipped { color: #d5ffe5; background: #1b4b32; }
+  #lobby .loadout-item .loadout-action:disabled { opacity: .65; cursor: default; }
+  #lobby .loadout-settings { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 4px; }
+  #lobby .loadout-settings span { font-size: 11px; letter-spacing: 1.5px; color: #a7bcaf; }
+  #lobby .loadout-settings button { margin: 0; }
+  @media (max-width: 500px) { #lobby .lobby-loadout { padding: 12px; } #lobby .loadout-panel { padding: 12px; } #lobby .loadout-items { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; } #lobby .loadout-item { padding: 10px; } #lobby .loadout-item-status { font-size: 8px; } }
 </style>
 </head>
 <body>

@@ -91,6 +91,114 @@ function buildDetail(map, t) {   // baseboards, trim strips, ceiling pipes and f
     o.position.set(rnd() * 36 - 18, 0.015, rnd() * 36 - 18); o.rotation.x = -Math.PI / 2; o.rotation.z = rnd() * 6.28; statics.add(o);
   }
 }
+// Level 1 only: lightweight, non-colliding abandoned laboratory dressing.
+// Kept against exterior walls or on top of existing machines to preserve navigation.
+function buildAbandonedLab() {
+  const steel = new THREE.MeshStandardMaterial({ color: 0x596b6c, metalness: 0.72, roughness: 0.44 });
+  const pale = new THREE.MeshStandardMaterial({ color: 0xb3c5bc, metalness: 0.18, roughness: 0.75 });
+  const rust = new THREE.MeshStandardMaterial({ color: 0x593a2f, metalness: 0.3, roughness: 0.95 });
+  const glass = new THREE.MeshStandardMaterial({ color: 0x74c5b2, transparent: true, opacity: 0.34, roughness: 0.15, metalness: 0.1, depthWrite: false });
+  const red = new THREE.MeshBasicMaterial({ color: 0xe3392b });
+  const placeBox = (x, y, z, w, h, d, m) => place(new THREE.BoxGeometry(w, h, d), m, x, y, z);
+  // Emergency stripe and isolated light bars in the outer perimeter.
+  for (const z of [-19.92, 19.92]) {
+    for (const x of [-15, 0, 15]) {
+      placeBox(x, 1.18, z, 2.8, 0.12, 0.045, rust);
+      placeBox(x, 2.52, z, 1.1, 0.09, 0.06, red);
+    }
+  }
+  // Research cabinets against outer walls, out of player routes.
+  for (const x of [-18.6, 18.6]) for (const z of [-15, -6, 6, 15]) {
+    placeBox(x, 0.85, z, 0.52, 1.7, 1.25, steel);
+    placeBox(x + (x < 0 ? 0.275 : -0.275), 1.04, z, 0.035, 0.6, 0.95, pale);
+    placeBox(x + (x < 0 ? 0.305 : -0.305), 1.05, z + 0.3, 0.04, 0.12, 0.06, rust);
+  }
+  // Sample vessels and monitor casings sit on existing prop footprints.
+  for (const [x, z, w, d, h, kind] of (MAPS[1].props || [])) {
+    if (kind !== 'machine') continue;
+    placeBox(x, h + 0.09, z, Math.min(w * 0.7, 1.2), 0.13, Math.min(d * 0.6, 0.75), pale);
+    for (const dx of [-0.3, 0, 0.3]) {
+      const vial = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.085, 0.3, 8), glass);
+      vial.position.set(x + dx, h + 0.31, z); statics.add(vial);
+    }
+  }
+  // Legible signs use small generated textures; no image downloads or network requests.
+  function sign(label, x, z, rot = 0) {
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+    const g = cv.getContext('2d'); g.fillStyle = '#172628'; g.fillRect(0, 0, 512, 128);
+    g.strokeStyle = '#a6c6b9'; g.lineWidth = 6; g.strokeRect(5, 5, 502, 118);
+    g.fillStyle = '#d8e9dd'; g.font = 'bold 39px monospace'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(label, 256, 64);
+    const texture = new THREE.CanvasTexture(cv);
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(2.8, 0.7), new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }));
+    panel.position.set(x, 2.1, z); panel.rotation.y = rot; statics.add(panel);
+  }
+  sign('RESEARCH WING A', -15, 19.96);
+  sign('BIOHAZARD / KEEP OUT', 15, 19.96);
+  sign('CONTAINMENT LAB', -15, -19.96);
+  sign('POWER CONTROL', 15, -19.96);
+}
+// Stage 2 / Facility 1: mission-reactive research consoles and backup-power assembly.
+// All geometry is cosmetic and stays on existing solid machine footprints or high on walls.
+// Door and blackout state come from the existing authoritative multiplayer snapshots.
+const labStatus = [];
+function labLabel(text, width = 1.65, height = 0.44) {
+  const cv = document.createElement('canvas'); cv.width = 512; cv.height = 128;
+  const g = cv.getContext('2d'); g.fillStyle = '#061715'; g.fillRect(0, 0, 512, 128);
+  g.strokeStyle = '#527d73'; g.lineWidth = 8; g.strokeRect(4, 4, 504, 120);
+  g.fillStyle = '#b4e8d5'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = 'bold 34px monospace'; g.fillText(text, 256, 64);
+  const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.Mesh(new THREE.PlaneGeometry(width, height), new THREE.MeshBasicMaterial({ map: t, side: THREE.DoubleSide }));
+}
+function buildLabSystems() {
+  labStatus.length = 0;
+  const metal = new THREE.MeshStandardMaterial({ color: 0x3b5155, metalness: 0.78, roughness: 0.36 });
+  const dark = new THREE.MeshStandardMaterial({ color: 0x101a1e, metalness: 0.55, roughness: 0.52 });
+  const amber = new THREE.MeshBasicMaterial({ color: 0xff8c36 });
+  const add = (geo, m, x, y, z) => place(geo, m, x, y, z);
+  const machines = MAPS[1].props.filter(p => p[5] === 'machine');
+  // Compact instrument panels and readouts on top of existing machines.
+  machines.slice(0, 6).forEach(([x, z, w, d, h], i) => {
+    const body = add(new THREE.BoxGeometry(Math.min(1.12, w * 0.8), 0.53, Math.min(0.52, d * 0.6)), metal, x, h + 0.265, z);
+    body.rotation.y = (i % 2 ? -0.15 : 0.15);
+    const panel = labLabel(['BIO SCAN 01', 'SPECIMEN LOG', 'SECURITY SYS', 'DATA ARCHIVE', 'POWER STATUS', 'LAB TERMINAL'][i], 0.91, 0.26);
+    panel.position.set(x, h + 0.36, z + (z > 0 ? -0.275 : 0.275));
+    panel.rotation.y = z > 0 ? Math.PI : 0;
+    statics.add(panel);
+    const indicator = add(new THREE.BoxGeometry(0.14, 0.055, 0.035), amber, x + 0.4, h + 0.12, z + (z > 0 ? -0.29 : 0.29));
+    labStatus.push(indicator);
+  });
+  // Power-distribution module mounted above the existing machine at the south-east wing.
+  const host = machines.find(p => p[0] === 12 && p[1] === 5) || machines[0];
+  if (host) {
+    const [x, z, , , h] = host;
+    add(new THREE.BoxGeometry(1.3, 0.23, 0.75), dark, x, h + 0.12, z);
+    for (let i = -1; i <= 1; i++) {
+      const coil = add(new THREE.CylinderGeometry(0.115, 0.115, 0.46, 12), metal, x + i * 0.32, h + 0.47, z);
+      coil.rotation.z = Math.PI / 2;
+      const lamp = add(new THREE.SphereGeometry(0.075, 8, 6), amber.clone(), x + i * 0.32, h + 0.73, z);
+      labStatus.push(lamp);
+    }
+    const plate = labLabel('BACKUP POWER', 1.38, 0.33);
+    plate.position.set(x, h + 0.94, z); plate.rotation.y = z > 0 ? Math.PI : 0; statics.add(plate);
+  }
+  // Containment vessels on machine surfaces: layered glass, clamps, and fluid cores.
+  machines.slice(6, 10).forEach(([x, z, , , h]) => {
+    const vessel = add(new THREE.CylinderGeometry(0.24, 0.24, 0.64, 12), new THREE.MeshStandardMaterial({ color: 0x80cbbf, transparent: true, opacity: 0.34, metalness: 0.12, roughness: 0.14, depthWrite: false }), x, h + 0.34, z);
+    for (const y of [h + 0.04, h + 0.64]) add(new THREE.CylinderGeometry(0.26, 0.26, 0.07, 12), metal, x, y, z);
+    add(new THREE.CylinderGeometry(0.09, 0.09, 0.35, 8), new THREE.MeshBasicMaterial({ color: 0x3a8d72 }), x, h + 0.3, z);
+  });
+}
+function updateLabSystems(snapshot) {
+  if (snapshot.fac !== 1) return;
+  const powered = snapshot.door && !snapshot.bo;
+  const time = performance.now() * 0.001;
+  labStatus.forEach((o, i) => {
+    const active = powered ? 0x4af2a0 : snapshot.bo ? 0x431b15 : 0xff8c36;
+    o.material.color.setHex(active);
+    o.visible = !snapshot.bo || Math.sin(time * 3 + i) > 0.85;
+  });
+}
 const lamps = [], roomLight = new THREE.PointLight(0xffffff, 16, 20); roomLight.position.set(0, 2.8, 10); scene.add(roomLight);
 function buildLamps(t) {
   lamps.length = 0; roomLight.color.setHex(t.door);
@@ -365,6 +473,7 @@ function buildFac(map) {
   map.walls.forEach(b => box(b, wallMat(b, t)));
   door = box(map.door, new THREE.MeshStandardMaterial({ color: t.door, emissive: t.door, emissiveIntensity: 0.4 }));
   map.props.forEach(p => addProp(p, t)); buildLamps(t); buildDetail(map, t);
+  if (map.id === 1) { buildAbandonedLab(); buildLabSystems(); } else labStatus.length = 0;
   if (map.floorHaz) { const h = new THREE.Mesh(new THREE.PlaneGeometry(map.floorHaz[2], map.floorHaz[3]), hazMat); h.rotation.x = -Math.PI / 2; h.position.set(map.floorHaz[0], 0.03, map.floorHaz[1]); statics.add(h); }
 }
 const hzPool = [], gBox = new THREE.BoxGeometry(1, 1, 1), gDisc = new THREE.CylinderGeometry(1, 1, 0.05, 24);
@@ -392,7 +501,9 @@ function showBrief(s) {
   const m = MISSIONS[s.mi]; $('brief').innerHTML = `<h2>${FACILITIES[m.fac - 1].name.toUpperCase()}</h2><div><b>${m.name}</b></div><div>${m.brief}</div>`; $('brief').style.opacity = 1; setTimeout(() => { $('brief').style.opacity = 0; }, 5500);
 }
 const RANKS = ['Intern', 'Recruit', 'Operative', 'Specialist', 'Veteran', 'Warden', 'Legend'];
-function colorHtml() { return `<div>Suit colour: <button data-col="" style="width:auto">Auto</button>${PALETTE.map(c => `<button data-col="${c}" style="background:${c};width:26px;height:26px;padding:0;${save.col === c ? 'outline:3px solid #fff' : ''}"></button>`).join('')}</div>`; }
+function colorHtml() {
+  return `<div class="loadout-panel"><div class="loadout-panel-heading"><span class="loadout-icon">◈</span><div><h4>SUIT COLOUR</h4><p>Choose your operative's signature look</p></div></div><div class="loadout-colours"><button type="button" data-col="" class="loadout-auto ${!save.col ? 'active' : ''}" aria-pressed="${!save.col}">AUTO</button>${PALETTE.map(c => `<button type="button" class="loadout-swatch ${save.col === c ? 'active' : ''}" data-col="${c}" style="--swatch:${c}" aria-label="Suit colour ${c}" aria-pressed="${save.col === c}"><span></span></button>`).join('')}</div></div>`;
+}
 const dcPool = [];
 function syncDecoys(list) {
   list.forEach((c, i) => { let m = dcPool[i]; if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), new THREE.MeshBasicMaterial({ color: 0x33ffcc })); m.add(glow(0x33ffcc, 3, 0, 0.2, 0)); scene.add(m); dcPool[i] = m; } m.visible = true; m.position.set(c[0], 0.5, c[1]); });
@@ -400,12 +511,16 @@ function syncDecoys(list) {
 }
 function shopHtml(kind) {
   const cur = kind === 'hat' ? save.hat : save.gear, own = save.owned || [];
-  const btns = Object.entries(ITEMS).filter(([, it]) => it.kind === kind).map(([id, it]) => {
-    const label = it.name + (it.desc ? ` (${it.desc})` : '');
-    return own.includes(id) ? `<button data-eq="${id}" data-k="${kind}" class="${cur === id ? 'sel' : ''}">${label}${cur === id ? ' [equipped]' : ''}</button>`
-      : `<button data-buy="${id}" ${save.credits < it.cost ? 'disabled' : ''}>Buy ${it.name} ${it.cost}c</button>`;
+  const isHat = kind === 'hat';
+  const cards = Object.entries(ITEMS).filter(([, it]) => it.kind === kind).map(([id, it]) => {
+    const owned = own.includes(id), equipped = cur === id;
+    const state = equipped ? 'EQUIPPED' : owned ? 'OWNED' : `${it.cost} CREDITS`;
+    const action = owned
+      ? `<button type="button" data-eq="${id}" data-k="${kind}" class="loadout-action ${equipped ? 'equipped' : ''}" ${equipped ? 'disabled' : ''}>${equipped ? '✓ Equipped' : 'Equip'}</button>`
+      : `<button type="button" data-buy="${id}" class="loadout-action" ${save.credits < it.cost ? 'disabled' : ''}>${save.credits < it.cost ? 'Need more credits' : 'Buy · ' + it.cost + 'c'}</button>`;
+    return `<div class="loadout-item ${equipped ? 'is-equipped' : ''}"><div class="loadout-item-top"><span class="loadout-item-symbol">${isHat ? '♛' : '⬡'}</span><span class="loadout-item-status">${state}</span></div><strong>${it.name}</strong><p>${it.desc || 'A cosmetic hat your teammates can see.'}</p>${action}</div>`;
   }).join('');
-  return `<div>${kind === 'hat' ? 'Hat (friends see it)' : 'Gear (one per mission)'}: <button data-eq="" data-k="${kind}" class="${cur ? '' : 'sel'}">None</button>${btns}</div>`;
+  return `<div class="loadout-panel"><div class="loadout-panel-heading"><span class="loadout-icon">${isHat ? '☆' : '⌁'}</span><div><h4>${isHat ? 'HEADWEAR' : 'MISSION GEAR'}</h4><p>${isHat ? 'Customize your character — friends can see it' : 'Equip one useful item for your next mission'}</p></div></div><div class="loadout-items"><div class="loadout-item ${!cur ? 'is-equipped' : ''}"><div class="loadout-item-top"><span class="loadout-item-symbol">○</span><span class="loadout-item-status">${!cur ? 'EQUIPPED' : 'DEFAULT'}</span></div><strong>None</strong><p>${isHat ? 'No hat selected.' : 'Enter the mission without special gear.'}</p><button type="button" data-eq="" data-k="${kind}" class="loadout-action ${!cur ? 'equipped' : ''}" ${!cur ? 'disabled' : ''}>${!cur ? '✓ Equipped' : 'Equip'}</button></div>${cards}</div></div>`;
 }
 function hatMesh(h) {
   const g = new THREE.Group(), add = (geo, c, y) => { const o = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: c })); o.position.y = y; g.add(o); return o; };
@@ -436,14 +551,22 @@ function updateLobby(s, me) {
   if (!on) { lobbyHtml = ''; return; }
   if (document.pointerLockElement) document.exitPointerLock();
   const host = s.host === myId, M = MISSIONS[s.mi];
-  const html = `<h2>ROOM ${code}</h2>
-   <div>${s.p.map(p => `<span style="color:${p.c}">${p.n}${p.id === s.host ? ' (host)' : ''} ${p.rd ? '[READY]' : '[...]'}</span>`).join(' &nbsp; ')}</div>
-   <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start"><div style="max-width:560px">${MISSIONS.map((m, i) => `${i === 0 || MISSIONS[i - 1].fac !== m.fac ? (i ? '<br>' : '') + '<b>' + FACILITIES[m.fac - 1].name + ':</b> ' : ''}<button data-pick="${i}" class="${i === s.mi ? 'sel' : ''}" ${host ? '' : 'disabled'}>${m.name}</button>`).join('')}</div><div><canvas width="240" height="240" style="border:1px solid #3a6;max-width:90vw"></canvas><div style="max-width:240px;font-size:12px;text-align:left;margin-top:4px">${previewInfo(M)}</div></div></div>
-   <div><b>${FACILITIES[M.fac - 1].tag}</b><br>${M.brief}<br>Base reward: ${M.reward} credits. Staying after the door opens raises the bonus (up to x2) but the scares speed up.</div>
-   ${colorHtml()}${shopHtml('gear')}${shopHtml('hat')}<button data-q="1">Graphics: ${quality.toUpperCase()}</button> <button data-ready="1">${me.rd ? 'Unready' : 'READY'}</button>
-   <div>Rank ${save.rank} (${RANKS[Math.min(save.rank - 1, RANKS.length - 1)]}) · ${save.credits} credits · ${save.wins} wins / ${save.missions} missions</div>
-   <small>${host ? 'You are the host: pick the mission. ' : 'The host picks the mission. '}It starts when everyone is ready.</small>`;
-  if (html !== lobbyHtml) { lobbyHtml = html; lobby.innerHTML = html; const cv = lobby.querySelector('canvas'); if (cv) drawPreview(cv, M); }
+  const cards = MISSIONS.map((m, i) => {
+    const facility = FACILITIES[m.fac - 1];
+    const section = i === 0 || MISSIONS[i - 1].fac !== m.fac
+      ? `<h3 class="facility-heading">${String(m.fac).padStart(2, '0')} / ${facility.name}</h3>` : '';
+    return `${section}<button type="button" class="mission-card ${i === s.mi ? 'sel' : ''}" data-pick="${i}" ${host ? '' : 'disabled'} aria-pressed="${i === s.mi}">
+      <canvas class="mission-map" data-map-index="${i}" width="240" height="240" aria-label="Map preview for ${m.name}"></canvas>
+      <span class="mission-card-info"><span class="mission-card-number">LEVEL ${String(i + 1).padStart(2, '0')}</span><strong>${m.name}</strong><span class="mission-objective"><b>OBJECTIVE</b> ${m.brief}</span><span class="mission-reward">${m.reward} credits</span></span>
+    </button>`;
+  }).join('');
+  const html = `<div class="lobby-shell"><header class="lobby-header"><div><span class="lobby-eyebrow">BLACKSITE-17 / MISSION CONTROL</span><h2>ROOM ${code}</h2><p>${host ? 'Choose a mission for your squad' : 'The host chooses the mission'}</p></div><div class="lobby-squad">${s.p.map(p => `<span style="color:${p.c}">${p.n}${p.id === s.host ? ' (host)' : ''} ${p.rd ? '[READY]' : '[...]'}</span>`).join('')}</div></header>
+   <div class="lobby-section-title"><h3>SELECT A LEVEL</h3><span>${MISSIONS.length} missions · ${FACILITIES.length} facilities</span></div>
+   <div class="mission-grid">${cards}</div>
+   <section class="lobby-selection"><h3>SELECTED MISSION · ${FACILITIES[M.fac - 1].name} — ${M.name}</h3><p>${FACILITIES[M.fac - 1].tag}</p><p><b>Objective:</b> ${M.brief}</p><p>${previewInfo(M)}</p><p>Base reward: ${M.reward} credits. Staying after the door opens raises the bonus (up to x2), but the scares speed up.</p></section>
+   <section class="lobby-loadout"><div class="loadout-header"><div><span class="lobby-eyebrow">OPERATIVE CUSTOMIZATION</span><h3>YOUR LOADOUT</h3><p>Get ready for extraction. Select your gear and personalize your character.</p></div><div class="loadout-wallet"><small>AVAILABLE BALANCE</small><strong>${save.credits} <span>credits</span></strong></div></div>${colorHtml()}${shopHtml('gear')}${shopHtml('hat')}<div class="loadout-settings"><span>DISPLAY SETTINGS</span><button type="button" data-q="1">Graphics: ${quality.toUpperCase()}</button></div></section>
+   <footer class="lobby-footer"><div>Rank ${save.rank} (${RANKS[Math.min(save.rank - 1, RANKS.length - 1)]}) · ${save.credits} credits · ${save.wins} wins / ${save.missions} missions</div><button class="lobby-ready" data-ready="1">${me.rd ? 'UNREADY' : 'READY'}</button><small>${host ? 'You are the host: pick the mission. ' : 'The host picks the mission. '}It starts when everyone is ready.</small></footer></div>`;
+  if (html !== lobbyHtml) { lobbyHtml = html; lobby.innerHTML = html; lobby.querySelectorAll('canvas[data-map-index]').forEach(cv => drawPreview(cv, MISSIONS[Number(cv.dataset.mapIndex)])); }
 }
 function resultText(s, p) {
   if (s.end && s.res) { const r = s.res; return `${r.win ? 'EXTRACTION SUCCESSFUL' : 'MISSION FAILED'}\n+${r.credits[myId] || 0} credits\n${r.awards.join('\n')}${r.story ? '\n\n' + r.story : ''}`; }
@@ -459,7 +582,7 @@ const frame = () => {
   const now = performance.now(), dt = Math.min(0.1, (now - t0) / 1000); t0 = now;
   if (snap) {
     if (snap.fac !== facShown) buildFac(MAPS[snap.fac]);
-    door.visible = !snap.door; syncDyn(snap.cfg); syncHz(snap.hz); syncCells(snap.ce); syncDecoys(snap.dc); sockMesh.visible = snap.cn > 0;
+    door.visible = !snap.door; updateLabSystems(snap); syncDyn(snap.cfg); syncHz(snap.hz); syncCells(snap.ce); syncDecoys(snap.dc); sockMesh.visible = snap.cn > 0;
     const flick = snap.fac === 6 || snap.fac === 11 || snap.fac === 12 || snap.fac === 3;   // unstable power in some facilities
     lamps.forEach(l => { l.m.visible = l.s.visible = !snap.bo && !(flick && Math.random() < 0.04); });
     screens.forEach(s => { s.material.opacity = snap.bo ? 0.15 : 0.7 + Math.random() * 0.3; });
