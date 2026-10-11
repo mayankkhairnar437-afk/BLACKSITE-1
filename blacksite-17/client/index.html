@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>BLACKSITE-17</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #cfe; font-family: monospace; overflow: hidden; touch-action: none; }
+  canvas { display: block; }
+  #menu { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #050a08; z-index: 5; }
+  #menu h1 { letter-spacing: 8px; color: #6f9; margin: 0 0 10px; text-shadow: 0 0 12px #3f8; }
+  input, button { font: inherit; padding: 10px 14px; background: #0b1511; color: #cfe; border: 1px solid #3a6; border-radius: 4px; }
+  button { cursor: pointer; } button:hover { background: #163; }
+  #err { color: #f66; min-height: 1em; }
+  #hud { position: fixed; left: 10px; top: 10px; display: none; text-shadow: 0 0 4px #000; pointer-events: none; z-index: 3; }
+  #msg { position: fixed; left: 0; right: 0; top: 40%; text-align: center; font-size: 28px; display: none; z-index: 3; pointer-events: none; text-shadow: 0 0 8px #000; }
+  #cross { position: fixed; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px; background: #6f9a; border-radius: 50%; display: none; }
+  .tb { position: fixed; display: none; width: 70px; height: 70px; border-radius: 50%; opacity: .6; z-index: 4; }
+  #bJ { right: 20px; bottom: 100px; } #bE { right: 100px; bottom: 30px; } #bC { right: 100px; bottom: 120px; } #bS { right: 20px; bottom: 20px; }
+  #fx { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 2; background: #fff; }
+  #bF { right: 190px; bottom: 30px; }
+  #lobby { position: fixed; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 10px; background: #000b; z-index: 4; text-align: center; padding: 10px; }
+  #lobby .sel { background: #1c5; color: #000; }
+  #lobby button:disabled { opacity: .5; }
+  #msg { white-space: pre-line; }
+  #bM { right: 270px; bottom: 30px; }
+  #bG { right: 190px; bottom: 120px; }
+  #lobby { overflow-y: auto; justify-content: flex-start; padding-top: 20px; }
+  #vig { position: fixed; inset: 0; pointer-events: none; z-index: 1; background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.65) 100%); }
+  #hurt { position: fixed; inset: 0; pointer-events: none; z-index: 1; opacity: 0; background: radial-gradient(ellipse at center, transparent 40%, rgba(180,0,0,.85) 100%); }
+  @keyframes flick { 0%,92%,100% { opacity: 1 } 94% { opacity: .4 } 96% { opacity: .9 } 97% { opacity: .3 } }
+  #menu h1 { animation: flick 5s infinite; font-size: 42px; }
+  #mini { position: fixed; right: 10px; top: 10px; display: none; z-index: 3; pointer-events: none; border: 1px solid #3a6; border-radius: 4px; }
+  @media (pointer: coarse) { #mini { width: 110px; height: 110px; } }
+  #grain { position: fixed; left: -50%; top: -50%; width: 200%; height: 200%; pointer-events: none; z-index: 1; opacity: .07; mix-blend-mode: overlay; animation: grain .6s steps(4) infinite; }
+  @keyframes grain { 0% { transform: translate(0,0) } 25% { transform: translate(-5%,3%) } 50% { transform: translate(4%,-4%) } 75% { transform: translate(-3%,-2%) } 100% { transform: translate(0,0) } }
+  #bU { right: 270px; bottom: 120px; }
+  #menu { background: radial-gradient(ellipse at 50% 30%, #0d2a20 0%, #030806 70%); }
+  #menu input, #menu button { background: #0b1a14; border: 1px solid #2f8a5a; box-shadow: 0 0 10px #0a3 inset; }
+  #hud { background: rgba(0,0,0,.45); padding: 8px 12px; border-left: 3px solid #3a6; max-width: 440px; font-size: 14px; }
+  #hud .hl { font-size: 12px; opacity: .8; margin-bottom: 4px; } #hud .obj span { display: block; font-size: 11px; letter-spacing: 3px; color: #6f9; } #hud .obj em { color: #fd3; font-style: normal; }
+  #bars { position: fixed; left: 14px; bottom: 14px; z-index: 3; width: 260px; pointer-events: none; display: none; }
+  .bar { position: relative; height: 18px; background: #0008; border: 1px solid #3a6; margin-top: 6px; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; display: block; background: linear-gradient(90deg, #1a8, #4f9); transition: width .15s; }
+  .bar.hp i { background: linear-gradient(90deg, #c22, #f66); } .bar b { position: relative; font-size: 12px; padding-left: 6px; line-height: 18px; }
+  .bar.low { animation: lowhp .8s infinite; } @keyframes lowhp { 50% { box-shadow: 0 0 12px #f22; } } .tl { margin-top: 6px; font-size: 13px; }
+  #prompt { position: fixed; left: 0; right: 0; bottom: 90px; text-align: center; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .2s; font-size: 18px; text-shadow: 0 0 6px #000; }
+  #prompt b { color: #fd3; }
+  #brief { position: fixed; left: 0; right: 0; top: 22%; text-align: center; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 1s; text-shadow: 0 0 12px #000; }
+  #brief h2 { letter-spacing: 6px; font-size: 34px; margin: 0; color: #8fc; } #brief div { margin-top: 8px; font-size: 15px; }
+  /* Mission selection: scoped to the room lobby; the initial menu is unchanged. */
+  #lobby { box-sizing: border-box; padding: 24px 16px 48px; background: rgba(2,9,8,.94); text-align: left; align-items: stretch; }
+  #lobby .lobby-shell { width: min(1120px, 100%); margin: 0 auto; display: flex; flex-direction: column; gap: 22px; }
+  #lobby .lobby-header { display: flex; justify-content: space-between; align-items: center; gap: 18px; flex-wrap: wrap; border-bottom: 1px solid #285540; padding-bottom: 18px; }
+  #lobby .lobby-header h2 { margin: 5px 0; color: #8fffc2; letter-spacing: 3px; }
+  #lobby .lobby-header p, #lobby .lobby-section-title span { color: #a1b8ab; font-size: 12px; margin: 0; }
+  #lobby .lobby-eyebrow, #lobby .mission-card-number { color: #65c998; letter-spacing: 2px; font-size: 11px; }
+  #lobby .lobby-squad { display: flex; gap: 8px; flex-wrap: wrap; max-width: 520px; }
+  #lobby .lobby-squad span { background: #101d18; border: 1px solid #345744; border-radius: 5px; padding: 8px; font-size: 12px; }
+  #lobby .lobby-section-title { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 10px; }
+  #lobby .lobby-section-title h3, #lobby .lobby-loadout h3 { margin: 0; letter-spacing: 2px; }
+  #lobby .mission-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(min(100%,220px),1fr)); gap: 14px; }
+  #lobby .facility-heading { grid-column: 1 / -1; margin: 14px 0 0; padding: 10px 0 7px; border-bottom: 1px solid #2d5843; color: #9fffc6; letter-spacing: 1px; }
+  #lobby .mission-card { min-width: 0; width: 100%; padding: 10px; text-align: left; display: flex; flex-direction: column; gap: 10px; background: #0d1b16; border: 1px solid #315b46; border-radius: 9px; color: #e1f5e9; box-shadow: none; }
+  #lobby .mission-card:hover { background: #183328; border-color: #6eac88; }
+  #lobby .mission-card.sel { background: #123927; border: 2px solid #7effae; padding: 9px; color: #fff; }
+  #lobby .mission-card:disabled { opacity: .85; cursor: default; }
+  #lobby .mission-map { width: 100%; height: auto; aspect-ratio: 1; object-fit: contain; border-radius: 5px; border: 1px solid #305a48; box-sizing: border-box; }
+  #lobby .mission-card-info { display: flex; flex-direction: column; gap: 7px; flex: 1; }
+  #lobby .mission-card-info strong { font-size: 16px; }
+  #lobby .mission-objective { font-size: 12px; color: #b7d2c2; line-height: 1.55; overflow-wrap: anywhere; }
+  #lobby .mission-objective b { display: block; color: #7effae; font-size: 10px; letter-spacing: 1px; }
+  #lobby .mission-reward { margin-top: auto; font-size: 11px; color: #e7cf75; }
+  #lobby .lobby-selection, #lobby .lobby-loadout, #lobby .lobby-footer { padding: 18px; border: 1px solid #2b5640; border-radius: 8px; background: #0a1712; }
+  #lobby .lobby-selection h3 { margin: 0 0 12px; color: #9fffc6; }
+  #lobby .lobby-selection p { line-height: 1.5; }
+  #lobby .lobby-loadout { display: flex; flex-direction: column; gap: 12px; }
+  #lobby .lobby-loadout button { margin: 3px; }
+  #lobby .lobby-footer { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; }
+  #lobby .lobby-ready { min-width: 200px; font-size: 17px; font-weight: bold; background: #1c5; color: #03130b; }
+  @media (max-width: 500px) { #lobby { padding: 14px 10px 40px; } #lobby .mission-grid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; } #lobby .mission-card { padding: 7px; } #lobby .mission-card.sel { padding: 6px; } #lobby .mission-card-info strong { font-size: 13px; } #lobby .mission-objective { font-size: 11px; } }
+</style>
+</head>
+<body>
+<div id="menu">
+  <h1>BLACKSITE-17</h1><div style="letter-spacing:5px;opacity:.6;margin:-4px 0 14px;font-size:12px">CO-OP EXTRACTION HORROR</div>
+  <input id="name" placeholder="Your name" maxlength="14">
+  <button id="create">Create room</button>
+  <div><input id="code" placeholder="ROOM CODE" maxlength="4" size="8" style="text-transform:uppercase"> <button id="join">Join</button></div>
+  <div id="err"></div>
+  <small>WASD move · Shift sprint · C crouch · Space jump · Hold E revive teammate · F pulse (stuns enemies) · 1-4 emotes · G grab/throw cells · Q use tool</small>
+</div>
+<canvas id="mini" width="150" height="150"></canvas><div id="grain"></div><div id="vig"></div><div id="hurt"></div><div id="lobby"></div><div id="fx"></div><div id="hud"></div><div id="bars"></div><div id="prompt"></div><div id="brief"></div><div id="msg"></div><div id="cross"></div>
+<button class="tb" id="bJ">JUMP</button><button class="tb" id="bE">E</button><button class="tb" id="bC">CRCH</button><button class="tb" id="bS">RUN</button><button class="tb" id="bF">PULSE</button><button class="tb" id="bM">EMOTE</button><button class="tb" id="bG">GRAB</button><button class="tb" id="bU">USE</button>
+<script type="importmap">{ "imports": { "three": "/vendor/three/build/three.module.js" } }</script>
+<script type="module" src="/client/main.js"></script>
+</body>
+</html>
