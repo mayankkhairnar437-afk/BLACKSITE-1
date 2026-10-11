@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import * as C from '/shared/constants.js';
 import { MISSIONS, FACILITIES } from '/shared/missions.js';
-import { ITEMS } from '/shared/items.js';
+import { ITEMS, PALETTE } from '/shared/items.js';
+import { makeEnemy, animEnemy, makeOperative } from './models.js';
 import { MAPS, BONUS, ROOMS } from '/shared/maps.js';
 let token; try { token = localStorage.bs17 || (localStorage.bs17 = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now()); } catch { token = Math.random().toString(36).slice(2); }
 let save = { rank: 1, credits: 0, wins: 0, missions: 0 };
@@ -13,12 +14,15 @@ let ws, myId = 0, code = '', snap = null, started = false;
 // ---------- Scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: !touch });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
-let quality = touch ? 'low' : 'high'; try { quality = localStorage.bs17q || quality; } catch {}
+let composer = null; let quality = touch ? 'low' : 'high'; try { quality = localStorage.bs17q || quality; } catch {}
 renderer.shadowMap.enabled = quality === 'high'; renderer.shadowMap.type = THREE.PCFSoftShadowMap; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.3;
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x020405);
 scene.fog = new THREE.FogExp2(0x020405, 0.07);
+(async () => {   // image-based reflections (optional: silently skipped if the add-on cannot load)
+  try { const { RoomEnvironment } = await import('/vendor/three/examples/jsm/environments/RoomEnvironment.js'); const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), 0.04).texture; scene.environmentIntensity = quality === 'high' ? 0.3 : 0.12; } catch {}
+})();
 const cam = new THREE.PerspectiveCamera(75, 1, 0.1, 80);
 const amb = new THREE.AmbientLight(0x1a2a28, 1.2);
 scene.add(cam, amb);
@@ -34,20 +38,58 @@ floor.rotation.x = -Math.PI / 2; scene.add(floor);
 function tex(draw, rx, ry) { const S = quality === 'high' ? 512 : 256, c = document.createElement('canvas'); c.width = c.height = S; const g0 = c.getContext('2d'); g0.scale(S / 256, S / 256); draw(g0);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(rx, ry); return t; }
 const dots = (g, n, a) => { for (let i = 0; i < n; i++) { const v = Math.random() * 255 | 0; g.fillStyle = `rgba(${v},${v},${v},${a})`; g.fillRect(Math.random() * 256, Math.random() * 256, 2, 2); } };
-const floorTex = tex(g => { g.fillStyle = '#a0a0a0'; g.fillRect(0, 0, 256, 256); dots(g, 3000, 0.25); g.strokeStyle = '#444'; g.lineWidth = 3; g.strokeRect(0, 0, 256, 256); g.strokeStyle = '#707070'; g.lineWidth = 1; g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke(); }, 21, 21);
-const wallTex = tex(g => { g.fillStyle = '#b8b8b8'; g.fillRect(0, 0, 256, 256); dots(g, 2500, 0.2); g.fillStyle = '#555'; g.fillRect(0, 60, 256, 4); g.fillRect(0, 190, 256, 4); for (let x = 16; x < 256; x += 48) for (const y of [30, 100, 160, 225]) { g.beginPath(); g.arc(x, y, 3, 0, 6.3); g.fill(); } g.fillStyle = 'rgba(0,0,0,0.25)'; for (let i = 0; i < 6; i++) g.fillRect(Math.random() * 256, 0, 6 + Math.random() * 8, 256); }, 1, 1);
+const floorTex = tex(g => {
+  g.fillStyle = '#9c9c9c'; g.fillRect(0, 0, 256, 256); dots(g, 4000, 0.3);
+  for (let i = 0; i < 7; i++) { const x = Math.random() * 256, y = Math.random() * 256, r = 20 + Math.random() * 50, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(20,20,20,0.35)'); gr.addColorStop(1, 'rgba(20,20,20,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); }
+  g.strokeStyle = '#3a3a3a'; g.lineWidth = 3; g.strokeRect(0, 0, 256, 256); g.lineWidth = 1; g.strokeStyle = '#666'; g.beginPath(); g.moveTo(128, 0); g.lineTo(128, 256); g.moveTo(0, 128); g.lineTo(256, 128); g.stroke();
+  g.strokeStyle = 'rgba(0,0,0,0.35)'; for (let i = 0; i < 10; i++) { g.beginPath(); let x = Math.random() * 256, y = Math.random() * 256; g.moveTo(x, y); for (let j = 0; j < 4; j++) { x += Math.random() * 40 - 20; y += Math.random() * 40 - 20; g.lineTo(x, y); } g.stroke(); }
+  g.fillStyle = '#444'; for (const [x, y] of [[8, 8], [248, 8], [8, 248], [248, 248]]) { g.beginPath(); g.arc(x, y, 3, 0, 6.3); g.fill(); } }, 21, 21);
+const wallTex = tex(g => {
+  g.fillStyle = '#b8b8b8'; g.fillRect(0, 0, 256, 256); dots(g, 3000, 0.22); g.fillStyle = '#555'; g.fillRect(0, 60, 256, 4); g.fillRect(0, 190, 256, 4); g.fillStyle = '#777'; g.fillRect(0, 64, 256, 2);
+  for (let x = 16; x < 256; x += 48) for (const y of [30, 100, 160, 225]) { g.fillStyle = '#4a4a4a'; g.beginPath(); g.arc(x, y, 3, 0, 6.3); g.fill(); g.fillStyle = 'rgba(255,255,255,0.25)'; g.beginPath(); g.arc(x - 1, y - 1, 1.2, 0, 6.3); g.fill(); }
+  for (let i = 0; i < 9; i++) { const x = Math.random() * 256, w = 3 + Math.random() * 10, gr = g.createLinearGradient(0, 0, 0, 256); gr.addColorStop(0, 'rgba(60,35,20,0)'); gr.addColorStop(0.5, `rgba(60,35,20,${0.15 + Math.random() * 0.25})`); gr.addColorStop(1, 'rgba(30,20,10,0.45)'); g.fillStyle = gr; g.fillRect(x, 0, w, 256); }
+  const g2 = g.createLinearGradient(0, 180, 0, 256); g2.addColorStop(0, 'rgba(0,0,0,0)'); g2.addColorStop(1, 'rgba(0,0,0,0.55)'); g.fillStyle = g2; g.fillRect(0, 180, 256, 76); }, 1, 1);
+const bloodTex = tex(g => { for (let i = 0; i < 14; i++) { const x = 128 + (Math.random() - 0.5) * 120, y = 128 + (Math.random() - 0.5) * 120, r = 6 + Math.random() * 34, gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(70,5,5,0.85)'); gr.addColorStop(1, 'rgba(70,5,5,0)'); g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2); } }, 1, 1);
+const oilTex = tex(g => { const gr = g.createRadialGradient(128, 128, 0, 128, 128, 120); gr.addColorStop(0, 'rgba(5,5,8,0.8)'); gr.addColorStop(0.7, 'rgba(5,5,8,0.45)'); gr.addColorStop(1, 'rgba(5,5,8,0)'); g.fillStyle = gr; g.fillRect(0, 0, 256, 256); }, 1, 1);
 const glowTex = tex(g => { const r = g.createRadialGradient(128, 128, 0, 128, 128, 128); r.addColorStop(0, 'rgba(255,255,255,1)'); r.addColorStop(0.35, 'rgba(255,255,255,0.35)'); r.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = r; g.fillRect(0, 0, 256, 256); }, 1, 1);
-floor.material.map = floorTex; floor.receiveShadow = true;
+floor.material.map = floorTex; floor.material.bumpMap = floorTex; floor.material.bumpScale = 1.2; floor.material.metalness = 0.1; floor.receiveShadow = true;
 // ---- props (crates, barrels, machines), ceiling lamps and a room light that follows you ----
 const crateTex = tex(g => { g.fillStyle = '#b09060'; g.fillRect(0, 0, 256, 256); g.strokeStyle = '#5a4020'; g.lineWidth = 6; g.strokeRect(3, 3, 250, 250); g.lineWidth = 3; for (let y = 40; y < 256; y += 50) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); } g.beginPath(); g.moveTo(0, 0); g.lineTo(256, 256); g.moveTo(256, 0); g.lineTo(0, 256); g.stroke(); dots(g, 1500, 0.2); }, 1, 1);
 const machTex = tex(g => { g.fillStyle = '#8a929c'; g.fillRect(0, 0, 256, 256); dots(g, 1800, 0.2); g.fillStyle = '#2a2f36'; g.fillRect(20, 20, 216, 90); g.fillStyle = '#4af'; for (let i = 0; i < 5; i++) g.fillRect(34 + i * 40, 36, 26, 10); g.fillStyle = '#e84'; g.fillRect(34, 70, 30, 10); g.fillStyle = '#333'; for (let y = 140; y < 240; y += 14) g.fillRect(24, y, 208, 6); }, 1, 1);
 const barrelTex = tex(g => { g.fillStyle = '#999'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#555'; for (const y of [30, 120, 210]) g.fillRect(0, y, 256, 12); dots(g, 1500, 0.25); }, 2, 1);
+const screens = []; let screenTex = null;
+function place(geo, mat, x, y, z) { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); o.castShadow = true; statics.add(o); return o; }
+function wallMat(b, t) { const m = wallMap(b); return new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.8, metalness: 0.15, map: m, bumpMap: m, bumpScale: 1.5 }); }
 function addProp(p, t) {
-  const [x, z, w, d, h, kind] = p; let o;
-  if (kind === 'barrel') o = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, h, 14), new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.6, map: barrelTex }));
-  else o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: kind === 'crate' ? 0xb8a080 : t.wall, roughness: 0.75, map: kind === 'crate' ? crateTex : machTex }));
+  const [x, z, w, d, h, kind] = p, band = new THREE.MeshStandardMaterial({ color: 0x1a1d22, roughness: 0.7, metalness: 0.4 }); let o;
+  if (kind === 'barrel') {
+    o = new THREE.Mesh(new THREE.CylinderGeometry(w / 2, w / 2, h, 16), new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.5, metalness: 0.5, map: barrelTex, bumpMap: barrelTex, bumpScale: 1 }));
+    for (const f of [0.2, 0.8]) place(new THREE.TorusGeometry(w / 2 + 0.005, 0.03, 6, 20), band, x, h * f, z).rotation.x = Math.PI / 2;
+    place(new THREE.CylinderGeometry(w / 2 - 0.03, w / 2 - 0.03, 0.04, 16), band, x, h + 0.01, z);
+  } else if (kind === 'crate') {
+    o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: 0xb8a080, roughness: 0.85, map: crateTex, bumpMap: crateTex, bumpScale: 2 }));
+    for (const f of [0.18, 0.82]) place(new THREE.BoxGeometry(w + 0.04, 0.07, d + 0.04), band, x, h * f, z);
+  } else {
+    o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.45, metalness: 0.55, map: machTex, bumpMap: machTex, bumpScale: 1.2 }));
+    const sg = z > 0 ? -1 : 1, zz = z + sg * (d / 2 + 0.012);   // the screen faces the middle of the facility
+    if (!screenTex) screenTex = tex(g => { g.fillStyle = '#021a0a'; g.fillRect(0, 0, 256, 256); g.fillStyle = '#5f8'; g.font = '16px monospace'; for (let i = 0; i < 12; i++) g.fillText((Math.random() > 0.5 ? 'SYS ' : 'ERR ') + Math.random().toString(16).slice(2, 10) + ' ' + (Math.random() * 99 | 0), 8, 20 + i * 20); }, 1, 1);
+    const sp = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, h * 0.35), new THREE.MeshBasicMaterial({ map: screenTex, transparent: true, opacity: 0.9, color: 0x88ffbb }));
+    sp.position.set(x, h * 0.7, zz + sg * 0.004); sp.rotation.y = sg < 0 ? Math.PI : 0; statics.add(sp); screens.push(sp);
+    for (let i = 0; i < 3; i++) place(new THREE.BoxGeometry(w * 0.6, 0.03, 0.03), band, x, h * (0.18 + i * 0.07), zz);
+    statics.add(glow(t.door, 1.4, x, h + 0.1, z));
+  }
   o.position.set(x, h / 2, z); o.castShadow = o.receiveShadow = true; statics.add(o);
-  if (kind === 'machine') statics.add(glow(t.door, 1.4, x, h + 0.1, z));
+}
+function buildDetail(map, t) {   // baseboards, trim strips, ceiling pipes and floor stains
+  const dark = new THREE.MeshStandardMaterial({ color: 0x15181c, roughness: 0.8 }), trim = new THREE.MeshStandardMaterial({ color: t.door, emissive: t.door, emissiveIntensity: 0.25, roughness: 0.6 });
+  for (const b of map.walls) { place(new THREE.BoxGeometry(b[2] + 0.08, 0.28, b[3] + 0.08), dark, b[0], 0.14, b[1]); place(new THREE.BoxGeometry(b[2] + 0.06, 0.12, b[3] + 0.06), trim, b[0], C.WALL_H - 0.12, b[1]); }
+  const pipe = new THREE.MeshStandardMaterial({ color: 0x6a5a4a, roughness: 0.45, metalness: 0.7 });
+  for (const s of [-1, 1]) { place(new THREE.CylinderGeometry(0.09, 0.09, 40, 10), pipe, 0, 2.85, s * 19.6).rotation.z = Math.PI / 2; place(new THREE.CylinderGeometry(0.09, 0.09, 40, 10), pipe, s * 19.6, 2.85, 0).rotation.x = Math.PI / 2; }
+  let s = map.id * 9301 + 49297; const rnd = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < 12; i++) {
+    const sz = 1.5 + rnd() * 2, o = new THREE.Mesh(new THREE.PlaneGeometry(sz, sz), new THREE.MeshStandardMaterial({ map: rnd() > 0.5 ? bloodTex : oilTex, transparent: true, depthWrite: false, roughness: 0.4 }));
+    o.position.set(rnd() * 36 - 18, 0.015, rnd() * 36 - 18); o.rotation.x = -Math.PI / 2; o.rotation.z = rnd() * 6.28; statics.add(o);
+  }
 }
 const lamps = [], roomLight = new THREE.PointLight(0xffffff, 16, 20); roomLight.position.set(0, 2.8, 10); scene.add(roomLight);
 function buildLamps(t) {
@@ -79,6 +121,7 @@ function stepParticles(dt) {
 }
 function applyQuality() {
   const hi = quality === 'high'; renderer.shadowMap.enabled = hi; torch.castShadow = hi; renderer.setPixelRatio(hi ? Math.min(devicePixelRatio, 1.5) : 1);
+  if (hi && !composer) initPost();
   pgeo.setDrawRange(0, hi ? PN : 80); scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); resize();
 }
 applyQuality();
@@ -95,25 +138,14 @@ ext.rotation.x = -Math.PI / 2; ext.position.set(C.EXTRACT[0], 0.04, C.EXTRACT[1]
 const extLight = new THREE.PointLight(0x33ddff, 25, 14); extLight.position.set(C.EXTRACT[0], 2, C.EXTRACT[1]); scene.add(extLight); scene.add(glow(0x33ddff, 9, C.EXTRACT[0], 1.0, C.EXTRACT[1]));
 
 const avatars = new Map();
-function avatar(c) {   // astronaut-style operative: torso, backpack, helmet with visor, swinging arms and legs
-  const g = new THREE.Group(), suit = new THREE.MeshStandardMaterial({ color: c, roughness: 0.7 }), dark = new THREE.MeshStandardMaterial({ color: 0x20252c, roughness: 0.8 }), glass = new THREE.MeshBasicMaterial({ color: 0x66ddff });
-  const part = (geo, m, x, y, z, parent = g) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
-  part(new THREE.BoxGeometry(0.56, 0.66, 0.3), suit, 0, 1.15, 0);
-  part(new THREE.BoxGeometry(0.4, 0.5, 0.16), dark, 0, 1.2, 0.22);
-  part(new THREE.BoxGeometry(0.58, 0.12, 0.32), dark, 0, 0.84, 0);
-  const head = new THREE.Group(); head.position.set(0, 1.68, 0); g.add(head);
-  part(new THREE.SphereGeometry(0.22, 12, 10), suit, 0, 0, 0, head);
-  part(new THREE.BoxGeometry(0.26, 0.11, 0.1), glass, 0, 0.02, -0.17, head);
-  const limb = (x, y, len, w, m) => { const p = new THREE.Group(); p.position.set(x, y, 0); g.add(p); part(new THREE.BoxGeometry(w, len, w), m, 0, -len / 2, 0, p); return p; };
-  const u = g.userData; u.head = head; u.armL = limb(-0.36, 1.42, 0.62, 0.16, suit); u.armR = limb(0.36, 1.42, 0.62, 0.16, suit); u.legL = limb(-0.15, 0.82, 0.82, 0.2, dark); u.legR = limb(0.15, 0.82, 0.82, 0.2, dark);
-  scene.add(g); return g;
-}
+function avatar(c) { const g = makeOperative(c); scene.add(g); return g; }
 
 // ---------- Input ----------
 const keys = {}; let yaw = 0, pitch = 0, stick = { x: 0, y: 0 }, tJump = 0, tE = 0, tCrouch = 0, tSprint = 0, tF = 0;
 addEventListener('keydown', e => {
   keys[e.code] = 1; if (e.code === 'Space' && started) e.preventDefault();
   if (started && !e.repeat && e.code === 'KeyG') ws.send(JSON.stringify({ t: 'grab' }));
+  if (started && !e.repeat && e.code === 'KeyQ') ws.send(JSON.stringify({ t: 'use' }));
   if (e.code === 'KeyM' && master) { muted = !muted; master.gain.value = muted ? 0 : 0.9; }   // M mutes
   if (started && /^Digit[1-4]$/.test(e.code)) ws.send(JSON.stringify({ t: 'emote', i: +e.code.slice(5) }));
 });
@@ -126,6 +158,7 @@ if (touch) {
   const held = (id, set) => { const b = $(id); b.ontouchstart = e => { e.stopPropagation(); set(1); }; b.ontouchend = () => set(0); };
   held('bJ', v => tJump = v); held('bE', v => tE = v); held('bC', v => tCrouch = v); held('bS', v => tSprint = v); held('bF', v => tF = v);
   $('bG').ontouchstart = e => { e.stopPropagation(); ws.send(JSON.stringify({ t: 'grab' })); };
+  $('bU').ontouchstart = e => { e.stopPropagation(); ws.send(JSON.stringify({ t: 'use' })); };
   let emN = 0; $('bM').ontouchstart = e => { e.stopPropagation(); emN = emN % 4 + 1; ws.send(JSON.stringify({ t: 'emote', i: emN })); };
   let ls = null, rs = null;
   addEventListener('touchstart', e => {
@@ -150,7 +183,7 @@ if (touch) {
 function connect(first) {
   ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}`);
   ws.onopen = () => ws.send(JSON.stringify(first));
-  ws.onclose = () => { if (started) { $('msg').style.display = 'block'; $('msg').textContent = 'Disconnected from server'; } };
+  ws.onclose = () => { if (started) { $('msg').style.display = 'block'; $('msg').textContent = 'Disconnected from server: press F5 to rejoin (use the same room code)'; } };
   ws.onmessage = e => {
     const m = JSON.parse(e.data);
     if (m.t === 'err') $('err').textContent = m.msg;
@@ -172,7 +205,7 @@ function ambience() { // procedural low drone + slow pulse
 }
 function start() {
   started = true; $('menu').style.display = 'none';
-  ['hud', 'cross'].forEach(i => $(i).style.display = 'block');
+  ['hud', 'cross', 'bars'].forEach(i => $(i).style.display = 'block');
   if (touch) document.querySelectorAll('.tb').forEach(b => b.style.display = 'block');
   ambience();
   const nc = document.createElement('canvas'); nc.width = nc.height = 128; const ng = nc.getContext('2d'), idd = ng.createImageData(128, 128);   // film grain
@@ -187,19 +220,20 @@ function sendInput() {
 }
 
 // ---------- Enemies, scares, audio effects ----------
-let lastHp = 100, myHp = 100, bobT = 0, lastStep = 0, hudCache = '', audFac = 0;
-function noise(dur, vol, f0, f1) {
+let lastHp = 100, myHp = 100, bobT = 0, lastStep = 0, hudCache = '', audFac = 0, barsCache = '', lastPh = '', promptCache = '';
+function out(node, pan) { if (pan !== undefined && audioCtx.createStereoPanner) { const p = audioCtx.createStereoPanner(); p.pan.value = pan; node.connect(p); p.connect(master); } else node.connect(master); }
+function noise(dur, vol, f0, f1, pan) {
   if (!audioCtx) return; const t = audioCtx.currentTime, n = audioCtx.sampleRate * dur | 0;
   const b = audioCtx.createBuffer(1, n, audioCtx.sampleRate), d = b.getChannelData(0);
   for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n);
   const s = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
   s.buffer = b; f.type = 'bandpass'; f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur); g.gain.value = vol;
-  s.connect(f); f.connect(g); g.connect(master); s.start();
+  s.connect(f); f.connect(g); out(g, pan); s.start();
 }
-function tone(freq, dur, vol, type = 'sine') {
+function tone(freq, dur, vol, type = 'sine', pan) {
   if (!audioCtx) return; const t = audioCtx.currentTime, o = audioCtx.createOscillator(), g = audioCtx.createGain();
   o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
-  o.connect(g); g.connect(master); o.start(); o.stop(t + dur);
+  o.connect(g); out(g, pan); o.start(); o.stop(t + dur);
 }
 function flash(color, ms, op) {
   const f = $('fx'); f.style.transition = 'none'; f.style.background = color; f.style.opacity = op;
@@ -217,30 +251,51 @@ function handleEv(e) {
 }
 const emesh = new Map(), tmp = new THREE.Vector3(), tmp2 = new THREE.Vector3(), tmp3 = new THREE.Vector3();
 const basic = c => new THREE.MeshBasicMaterial({ color: c });
+const KINDS = ['drone', 'stalker', 'swarm', 'charger', 'spitter', 'phantom', 'sentry', 'unknown'], glb = {};
 function enemyMesh(k) {
-  const g = enemyMeshBase(k), gl = { drone: [0xff2222, 0.9, 1.2, 0.45], stalker: [0xffffee, 0.5, 2.2, 0.1], charger: [0xffaa44, 0.9, 1.1, 0.6], spitter: [0xaaff44, 1.0, 1.1, 0], phantom: [0xaa88ff, 1.2, 2.1, 0], sentry: [0x66aaff, 0.8, 1.6, 0.3], unknown: [0xffffff, 0.8, 2.7, 0.15], swarm: [0xff4444, 0.4, 0.4, 0] }[k];
-  if (gl) g.add(glow(gl[0], gl[1], 0, gl[2], gl[3])); return g;
+  let g;
+  if (glb[k]) {   // a real model dropped into client/assets/models/<kind>.glb replaces the procedural one
+    g = new THREE.Group(); const m = glb[k].clone(glb[k].scene); g.add(m); g.userData.glb = true;
+    if (glb[k].clips.length) { g.userData.mixer = new THREE.AnimationMixer(m); g.userData.mixer.clipAction(glb[k].clips[0]).play(); }
+  } else g = makeEnemy(k);
+  g.userData.k = k; scene.add(g); return g;
 }
-function enemyMeshBase(k) {
-  const g = new THREE.Group(), add = (geo, m, y, x = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, 0); g.add(o); return o; };
-  if (k === 'drone') { add(new THREE.BoxGeometry(0.9, 0.5, 0.9), mat(0x8890a0), 1.2); add(new THREE.SphereGeometry(0.15, 8, 6), basic(0xff2222), 1.2).position.z = 0.45; }
-  else if (k === 'stalker') { add(new THREE.BoxGeometry(0.4, 2.1, 0.3), mat(0x050505), 1.05); add(new THREE.SphereGeometry(0.22, 8, 6), basic(0xddddcc), 2.2); }
-  else if (k === 'swarm') add(new THREE.SphereGeometry(0.25, 8, 6), mat(0x551111), 0.4);
-  else if (k === 'charger') { add(new THREE.BoxGeometry(1.1, 1.3, 1.1), mat(0x7a3b12), 0.8); add(new THREE.BoxGeometry(0.2, 0.2, 0.7), basic(0xffcc66), 1.1).position.z = 0.7; }
-  else if (k === 'spitter') { add(new THREE.SphereGeometry(0.5, 10, 8), mat(0x3f7a2a), 0.6); add(new THREE.SphereGeometry(0.2, 8, 6), basic(0xaaff44), 1.1); }
-  else if (k === 'phantom') { add(new THREE.BoxGeometry(0.5, 2, 0.25), new THREE.MeshBasicMaterial({ color: 0x9a77ff, transparent: true, opacity: 0.55 }), 1); add(new THREE.SphereGeometry(0.2, 8, 6), basic(0xffffff), 2.1); }
-  else if (k === 'sentry') { add(new THREE.CylinderGeometry(0.12, 0.2, 1.5, 8), mat(0x444a55), 0.75); add(new THREE.BoxGeometry(0.5, 0.35, 0.5), mat(0x667088), 1.6); add(new THREE.SphereGeometry(0.1, 6, 4), basic(0x66aaff), 1.6).position.z = 0.28; }
-  else { add(new THREE.BoxGeometry(0.5, 3, 0.3), basic(0x000000), 1.5); add(new THREE.SphereGeometry(0.06, 6, 4), basic(0xffffff), 2.7, -0.1); add(new THREE.SphereGeometry(0.06, 6, 4), basic(0xffffff), 2.7, 0.1); }
-  scene.add(g); return g;
+async function loadGlbs() {
+  try {
+    const { GLTFLoader } = await import('/vendor/three/examples/jsm/loaders/GLTFLoader.js'), { clone } = await import('/vendor/three/examples/jsm/utils/SkeletonUtils.js'), ld = new GLTFLoader();
+    for (const k of KINDS) { const url = `/client/assets/models/${k}.glb`; const r = await fetch(url, { method: 'HEAD' }); if (!r.ok) continue; const gl = await ld.loadAsync(url); glb[k] = { scene: gl.scene, clips: gl.animations, clone }; }
+  } catch {}
+}
+loadGlbs();
+async function initPost() {   // bloom (desktop, HIGH quality): glow halos and emissive parts bleed light
+  if (touch || quality !== 'high') return;
+  try {
+    const d = '/vendor/three/examples/jsm/postprocessing/', [{ EffectComposer }, { RenderPass }, { UnrealBloomPass }, { OutputPass }] = await Promise.all([import(d + 'EffectComposer.js'), import(d + 'RenderPass.js'), import(d + 'UnrealBloomPass.js'), import(d + 'OutputPass.js')]);
+    const c = new EffectComposer(renderer); c.addPass(new RenderPass(scene, cam)); c.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.5, 0.6, 0.85)); c.addPass(new OutputPass()); c.setSize(innerWidth, innerHeight); composer = c;
+  } catch { composer = null; }
 }
 
 // ---------- Audio atmosphere, minimap ----------
 const AUD = { 1: [55, 82.4, 110.5], 2: [41, 62, 123], 3: [36, 54, 73], 4: [65, 98, 196], 5: [49, 73.4, 98], 6: [60, 120, 180], 7: [73, 110, 220], 8: [32.7, 49, 98], 9: [46, 69, 92], 10: [38, 57, 86], 11: [58, 61, 87], 12: [30, 45, 90] };
 function setFacilityAudio(id) { if (!audioCtx) return; const f = AUD[id] || AUD[1]; droneOsc.forEach((o, i) => o.frequency.setTargetAtTime(f[i], audioCtx.currentTime, 1.5)); }
+function makeTag(name) {   // floating name tag above each teammate
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64; const g = c.getContext('2d');
+  g.font = 'bold 34px monospace'; g.textAlign = 'center'; g.lineWidth = 6; g.strokeStyle = '#000'; g.strokeText(name, 128, 44); g.fillStyle = '#fff'; g.fillText(name, 128, 44);
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true })); s.scale.set(1.6, 0.4, 1); s.position.y = 2.5; return s;
+}
+const eaT = {}, EA = { drone: [1.4, 'tone', 190, 0.35, 0.05, 'sawtooth'], stalker: [3.5, 'noise', 0.9, 0.12, 600, 200], swarm: [0.35, 'noise', 0.25, 0.1, 3500, 2500], charger: [1.8, 'tone', 70, 0.4, 0.2, 'square'], spitter: [2.5, 'noise', 0.5, 0.1, 300, 120], phantom: [4, 'noise', 1.6, 0.08, 1500, 800], sentry: [2, 'tone', 300, 0.15, 0.04, 'triangle'], unknown: [5, 'tone', 40, 1.5, 0.25, 'sine'] };
+function enemyAudio(dt, me) {   // each creature type makes its own sound, louder when near and panned left/right to where it is
+  const best = {};
+  for (const e of snap.en) { const d = Math.hypot(e.x - me.x, e.z - me.z); if (d < 14 && (!best[e.k] || d < best[e.k].d)) best[e.k] = { d, e }; }
+  for (const k in EA) { eaT[k] = (eaT[k] || 0) - dt; const b = best[k]; if (!b || eaT[k] > 0) continue;
+    const [iv, kind, a, bb, c, d] = EA[k], vol = 1 - b.d / 14, dx = b.e.x - me.x, dz = b.e.z - me.z, pan = (Math.cos(me.yaw) * dx - Math.sin(me.yaw) * dz) / (b.d || 1);
+    eaT[k] = iv * (0.8 + Math.random() * 0.4);
+    if (kind === 'tone') tone(a + Math.random() * 20, bb, c * vol, d, pan); else noise(a, bb * vol, c, d, pan); }
+}
 let audNext = 8, beatT = 0;
 function audioTick(dt, me) {
   if (!audioCtx || !snap) return;
-  audNext -= dt;
+  audNext -= dt; enemyAudio(dt, me);
   if (audNext <= 0) { audNext = 6 + Math.random() * 9; const r = Math.random();   // random distant sounds: groan, drip, thump, whisper
     if (r < 0.3) noise(1.8, 0.12, 300, 60); else if (r < 0.55) tone(1100 + Math.random() * 400, 0.08, 0.05); else if (r < 0.8) tone(55, 0.5, 0.25, 'triangle'); else noise(2.2, 0.07, 900, 500); }
   let dmin = 99; for (const e of snap.en) if (e.k !== 'unknown') dmin = Math.min(dmin, Math.hypot(e.x - me.x, e.z - me.z));
@@ -305,11 +360,11 @@ function drawPreview(cv, M) {   // top-down map: walls, door, extraction ring, h
   const vg = g.createRadialGradient(S / 2, S / 2, S * 0.3, S / 2, S / 2, S * 0.75); vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, hex(t.fog)); g.globalAlpha = 0.85; g.fillStyle = vg; g.fillRect(0, 0, S, S); g.globalAlpha = 1;
 }
 function buildFac(map) {
-  statics.clear(); facShown = map.id; const pp = PART[map.id] || PART[1]; pmat.color.setHex(pp[0]); pv = [pp[1], pp[2]]; sockMesh.position.set(map.socket[0], 0.05, map.socket[1]); const t = map.theme; baseFog = t.fd;
+  statics.clear(); screens.length = 0; facShown = map.id; const pp = PART[map.id] || PART[1]; pmat.color.setHex(pp[0]); pv = [pp[1], pp[2]]; sockMesh.position.set(map.socket[0], 0.05, map.socket[1]); const t = map.theme; baseFog = t.fd;
   scene.background.setHex(t.bg); scene.fog.color.setHex(t.fog); floor.material.color.setHex(t.floor);
-  map.walls.forEach(b => box(b, new THREE.MeshStandardMaterial({ color: t.wall, roughness: 0.85, map: wallMap(b) })));
+  map.walls.forEach(b => box(b, wallMat(b, t)));
   door = box(map.door, new THREE.MeshStandardMaterial({ color: t.door, emissive: t.door, emissiveIntensity: 0.4 }));
-  map.props.forEach(p => addProp(p, t)); buildLamps(t);
+  map.props.forEach(p => addProp(p, t)); buildLamps(t); buildDetail(map, t);
   if (map.floorHaz) { const h = new THREE.Mesh(new THREE.PlaneGeometry(map.floorHaz[2], map.floorHaz[3]), hazMat); h.rotation.x = -Math.PI / 2; h.position.set(map.floorHaz[0], 0.03, map.floorHaz[1]); statics.add(h); }
 }
 const hzPool = [], gBox = new THREE.BoxGeometry(1, 1, 1), gDisc = new THREE.CylinderGeometry(1, 1, 0.05, 24);
@@ -322,6 +377,26 @@ function syncHz(list) {
     m.material.opacity = h.k === 'gas' || h.k === 'spore' ? 0.35 : h.k === 'water' ? 0.45 : h.on ? 0.85 : 0.3;
   });
   for (let i = list.length; i < hzPool.length; i++) hzPool[i].visible = false;
+}
+function promptFor(s, me) {   // context hints: what you can do right now
+  if (me.d) return '';
+  if (s.ce.some(c => c[3] === myId)) return 'Press <b>G</b> to throw the power cell (or walk it into the yellow ring)';
+  for (const p of s.p) if (p.d && p.id !== myId && Math.hypot(p.x - me.x, p.z - me.z) < 2.3) return `Hold <b>E</b> to revive ${p.n}`;
+  for (const c of s.ce) if (!c[3] && c[1] < 1 && Math.hypot(c[0] - me.x, c[2] - me.z) < 2.2) return 'Press <b>G</b> to grab the power cell';
+  for (const c of s.cfg.co.concat(s.cfg.ca)) if (Math.hypot(c[0] - me.x, c[1] - me.z) < 1.8) return 'Hold <b>E</b> to pick up';
+  if (s.door && Math.hypot(me.x, me.z + 16) < 3.5) return 'Stay in the ring: everyone must be inside to extract';
+  return '';
+}
+function setPrompt(h) { if (h !== promptCache) { promptCache = h; $('prompt').innerHTML = h; $('prompt').style.opacity = h ? 1 : 0; } }
+function showBrief(s) {
+  const m = MISSIONS[s.mi]; $('brief').innerHTML = `<h2>${FACILITIES[m.fac - 1].name.toUpperCase()}</h2><div><b>${m.name}</b></div><div>${m.brief}</div>`; $('brief').style.opacity = 1; setTimeout(() => { $('brief').style.opacity = 0; }, 5500);
+}
+const RANKS = ['Intern', 'Recruit', 'Operative', 'Specialist', 'Veteran', 'Warden', 'Legend'];
+function colorHtml() { return `<div>Suit colour: <button data-col="" style="width:auto">Auto</button>${PALETTE.map(c => `<button data-col="${c}" style="background:${c};width:26px;height:26px;padding:0;${save.col === c ? 'outline:3px solid #fff' : ''}"></button>`).join('')}</div>`; }
+const dcPool = [];
+function syncDecoys(list) {
+  list.forEach((c, i) => { let m = dcPool[i]; if (!m) { m = new THREE.Mesh(new THREE.SphereGeometry(0.25, 8, 6), new THREE.MeshBasicMaterial({ color: 0x33ffcc })); m.add(glow(0x33ffcc, 3, 0, 0.2, 0)); scene.add(m); dcPool[i] = m; } m.visible = true; m.position.set(c[0], 0.5, c[1]); });
+  for (let i = list.length; i < dcPool.length; i++) dcPool[i].visible = false;
 }
 function shopHtml(kind) {
   const cur = kind === 'hat' ? save.hat : save.gear, own = save.owned || [];
@@ -353,10 +428,11 @@ lobby.onclick = e => {
   if (d.ready) ws.send(JSON.stringify({ t: 'ready' }));
   if (d.q) { quality = quality === 'high' ? 'low' : 'high'; try { localStorage.bs17q = quality; } catch {} applyQuality(); }
   if (d.buy) ws.send(JSON.stringify({ t: 'buy', id: d.buy }));
+  if (d.col !== undefined) ws.send(JSON.stringify({ t: 'color', id: d.col }));
   if (d.eq !== undefined) ws.send(JSON.stringify({ t: 'equip', kind: d.k, id: d.eq }));
 };
 function updateLobby(s, me) {
-  const on = s.ph === 'lobby'; lobby.style.display = on ? 'flex' : 'none'; $('mini').style.display = on ? 'none' : 'block';
+  const on = s.ph === 'lobby'; lobby.style.display = on ? 'flex' : 'none'; $('mini').style.display = on ? 'none' : 'block'; $('hud').style.opacity = $('bars').style.opacity = on ? 0 : 1;
   if (!on) { lobbyHtml = ''; return; }
   if (document.pointerLockElement) document.exitPointerLock();
   const host = s.host === myId, M = MISSIONS[s.mi];
@@ -364,8 +440,8 @@ function updateLobby(s, me) {
    <div>${s.p.map(p => `<span style="color:${p.c}">${p.n}${p.id === s.host ? ' (host)' : ''} ${p.rd ? '[READY]' : '[...]'}</span>`).join(' &nbsp; ')}</div>
    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;align-items:flex-start"><div style="max-width:560px">${MISSIONS.map((m, i) => `${i === 0 || MISSIONS[i - 1].fac !== m.fac ? (i ? '<br>' : '') + '<b>' + FACILITIES[m.fac - 1].name + ':</b> ' : ''}<button data-pick="${i}" class="${i === s.mi ? 'sel' : ''}" ${host ? '' : 'disabled'}>${m.name}</button>`).join('')}</div><div><canvas width="240" height="240" style="border:1px solid #3a6;max-width:90vw"></canvas><div style="max-width:240px;font-size:12px;text-align:left;margin-top:4px">${previewInfo(M)}</div></div></div>
    <div><b>${FACILITIES[M.fac - 1].tag}</b><br>${M.brief}<br>Base reward: ${M.reward} credits. Staying after the door opens raises the bonus (up to x2) but the scares speed up.</div>
-   ${shopHtml('gear')}${shopHtml('hat')}<button data-q="1">Graphics: ${quality.toUpperCase()}</button> <button data-ready="1">${me.rd ? 'Unready' : 'READY'}</button>
-   <div>Rank ${save.rank} · ${save.credits} credits · ${save.wins} wins / ${save.missions} missions</div>
+   ${colorHtml()}${shopHtml('gear')}${shopHtml('hat')}<button data-q="1">Graphics: ${quality.toUpperCase()}</button> <button data-ready="1">${me.rd ? 'Unready' : 'READY'}</button>
+   <div>Rank ${save.rank} (${RANKS[Math.min(save.rank - 1, RANKS.length - 1)]}) · ${save.credits} credits · ${save.wins} wins / ${save.missions} missions</div>
    <small>${host ? 'You are the host: pick the mission. ' : 'The host picks the mission. '}It starts when everyone is ready.</small>`;
   if (html !== lobbyHtml) { lobbyHtml = html; lobby.innerHTML = html; const cv = lobby.querySelector('canvas'); if (cv) drawPreview(cv, M); }
 }
@@ -375,17 +451,18 @@ function resultText(s, p) {
 }
 
 // ---------- Loop ----------
-function resize() { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); }
+function resize() { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); if (composer) composer.setSize(innerWidth, innerHeight); }
 addEventListener('resize', resize); resize();
 const camPos = new THREE.Vector3(0, 1.6, 16);
 let t0 = performance.now();
-renderer.setAnimationLoop(() => {
+const frame = () => {
   const now = performance.now(), dt = Math.min(0.1, (now - t0) / 1000); t0 = now;
   if (snap) {
     if (snap.fac !== facShown) buildFac(MAPS[snap.fac]);
-    door.visible = !snap.door; syncDyn(snap.cfg); syncHz(snap.hz); syncCells(snap.ce); sockMesh.visible = snap.cn > 0;
+    door.visible = !snap.door; syncDyn(snap.cfg); syncHz(snap.hz); syncCells(snap.ce); syncDecoys(snap.dc); sockMesh.visible = snap.cn > 0;
     const flick = snap.fac === 6 || snap.fac === 11 || snap.fac === 12 || snap.fac === 3;   // unstable power in some facilities
     lamps.forEach(l => { l.m.visible = l.s.visible = !snap.bo && !(flick && Math.random() < 0.04); });
+    screens.forEach(s => { s.material.opacity = snap.bo ? 0.15 : 0.7 + Math.random() * 0.3; });
     const rc = ROOMS[roomIdx(camPos.x, camPos.z)]; roomLight.position.lerp(tmp.set(rc[0], 2.8, rc[1]), Math.min(1, dt * 4)); roomLight.intensity = snap.bo ? 0 : 16;
     const seen = new Set();
     for (const p of snap.p) {
@@ -397,10 +474,14 @@ renderer.setAnimationLoop(() => {
         lastHp = p.hp; myHp = p.hp;
         audioTick(dt, p); if (snap.fac !== audFac) { audFac = snap.fac; setFacilityAudio(audFac); }
         if (now - miniT > 100) { miniT = now; drawMini(snap, p); }
-        const me = p; updateLobby(snap, p); const hud = [`ROOM ${code}  ·  ${snap.p.length}/8 players`, `HP ${me.hp}  ·  ${ROOMS[roomIdx(me.x, me.z)][2]}`,
-          snap.obj + (snap.mult > 1 ? ` · bonus x${snap.mult.toFixed(2)}` : ''),
-          me.cd > 0 ? `Pulse recharging ${me.cd}s` : 'Pulse [F] ready: stuns enemies in front of you'];
-        const hs = hud.join('<br>'); if (hs !== hudCache) { hudCache = hs; $('hud').innerHTML = hs; }
+        if (snap.ph !== lastPh) { if (snap.ph === 'mission') showBrief(snap); lastPh = snap.ph; }
+        const me = p; updateLobby(snap, p); const room = ROOMS[roomIdx(me.x, me.z)][2];
+        const hs = `<div class="hl">ROOM <b>${code}</b> · ${snap.p.length}/8 · ${room}</div><div class="obj"><span>OBJECTIVE</span>${snap.obj}${snap.mult > 1 ? ` <em>bonus x${snap.mult.toFixed(2)}</em>` : ''}</div>`;
+        if (hs !== hudCache) { hudCache = hs; $('hud').innerHTML = hs; }
+        const tool = me.ge === 'medkit' || me.ge === 'decoy' ? `<div class="tl">${ITEMS[me.ge].name} <b>[Q]</b> x${me.ch}</div>` : '';
+        const bs = `<div class="bar hp ${me.hp < 35 ? 'low' : ''}"><i style="width:${Math.max(0, me.hp)}%"></i><b>HEALTH ${me.hp}</b></div><div class="bar"><i style="width:${me.cd > 0 ? Math.round((1 - me.cd / (me.ge === 'pulse2' ? 5 : 8)) * 100) : 100}%"></i><b>PULSE [F] ${me.cd > 0 ? me.cd + 's' : 'READY'}</b></div>${tool}`;
+        if (bs !== barsCache) { barsCache = bs; $('bars').innerHTML = bs; }
+        setPrompt(promptFor(snap, me));
         $('msg').style.display = p.d || snap.end ? 'block' : 'none';
         $('msg').textContent = resultText(snap, p);
         continue;
@@ -410,19 +491,26 @@ renderer.setAnimationLoop(() => {
       const ox = a.position.x, oz = a.position.z;
       a.position.lerp(tmp2.set(p.x, p.y, p.z), Math.min(1, dt * 15));
       const spd = Math.hypot(a.position.x - ox, a.position.z - oz) / Math.max(dt, 0.001), u = a.userData;   // walk cycle from actual movement
+      if (u.col !== p.c) { u.col = p.c; u.suit.color.set(p.c); }   // suit colour chosen in the lobby
       u.ph = (u.ph || 0) + spd * dt * 2.4; const sw = Math.sin(u.ph) * Math.min(spd / 4, 1) * 0.9;
       u.legL.rotation.x = sw; u.legR.rotation.x = -sw; u.armL.rotation.x = -sw; u.armR.rotation.x = sw;
-      setHat(a, p.h); const em = p.em, tm = performance.now();   // emotes: 1 spin, 2 bounce, 3 faint, 4 big head
+      setHat(a, p.h); if (!a.userData.tag) { a.userData.tag = makeTag(p.n); a.add(a.userData.tag); } const em = p.em, tm = performance.now();   // emotes: 1 spin, 2 bounce, 3 faint, 4 big head
       a.rotation.y = p.yaw + (em === 1 ? tm * 0.012 : 0); a.rotation.z = p.d || em === 3 ? Math.PI / 2 : 0;
       if (p.d || em === 3) a.position.y = 0.4; else if (em === 2) a.position.y = Math.abs(Math.sin(tm * 0.012)) * 0.8;
       a.userData.head.scale.setScalar(em === 4 ? 2.2 : 1);
     }
     const eseen = new Set();
     for (const e of snap.en) {
-      eseen.add(e.id); let m = emesh.get(e.id); if (!m) { m = enemyMesh(e.k); m.position.set(e.x, 0, e.z); emesh.set(e.id, m); }
-      m.position.lerp(tmp.set(e.x, 0, e.z), Math.min(1, dt * 12));
-      m.position.y = e.k === 'drone' ? 0.3 + Math.sin(now * 0.004 + e.id) * 0.15 : 0;   // drones hover
-      m.lookAt(camPos.x, 0, camPos.z); m.visible = (e.k === 'phantom' ? Math.random() > 0.25 : true) && (!e.s || Math.random() > 0.4);   // stunned enemies flicker
+      eseen.add(e.id); let m = emesh.get(e.id); if (!m) { m = enemyMesh(e.k); m.position.set(e.x, 0, e.z); m.userData.hd = 0; emesh.set(e.id, m); }
+      const u = m.userData, px = m.position.x, pz = m.position.z, f = Math.min(1, dt * 12);
+      m.position.x += (e.x - px) * f; m.position.z += (e.z - pz) * f;
+      const mvx = m.position.x - px, mvz = m.position.z - pz, spd = Math.hypot(mvx, mvz) / Math.max(dt, 0.001);
+      let aim = null; for (const p of snap.p) if (!p.d) { const d = Math.hypot(p.x - m.position.x, p.z - m.position.z); if (!aim || d < aim.d) aim = { d, x: p.x, z: p.z }; }
+      const want = spd > 0.4 ? Math.atan2(mvx, mvz) : aim && aim.d < 12 ? Math.atan2(aim.x - m.position.x, aim.z - m.position.z) : u.hd;   // face where it walks, or at you when idle
+      let dh = want - u.hd; dh = Math.atan2(Math.sin(dh), Math.cos(dh)); u.hd += dh * Math.min(1, dt * 8); m.rotation.y = u.hd;
+      if (!u.glb) animEnemy(m, { t: now * 0.001, dt, spd, st: e.a || 0, stun: e.s, k: e.k });
+      if (u.mixer) u.mixer.update(dt);
+      m.visible = (e.k === 'phantom' ? Math.random() > 0.15 : true) && (!e.s || Math.random() > 0.4);
     }
     for (const [id, m] of emesh) if (!eseen.has(id)) { scene.remove(m); emesh.delete(id); }
     const bo = snap.bo;   // blackout: lights die, flashlight flickers
@@ -438,5 +526,12 @@ renderer.setAnimationLoop(() => {
   hand.position.y = -0.27 + Math.sin(bobT) * 0.012; hand.position.x = 0.3 + Math.cos(bobT * 0.5) * 0.008;
   $('hurt').style.opacity = Math.min(0.9, Math.pow(1 - myHp / 100, 2));
   cam.rotation.set(pitch, yaw, 0, 'YXZ');
-  renderer.render(scene, cam);
+  try { if (composer && quality === 'high') composer.render(dt); else renderer.render(scene, cam); } catch (e) { composer = null; renderer.render(scene, cam); }
+};
+let errShown = false;
+renderer.setAnimationLoop(() => {
+  try { frame(); } catch (e) {
+    if (!errShown) { errShown = true; console.error(e); $('msg').style.display = 'block'; $('msg').textContent = 'Game error: ' + e.message + ' (press F12, copy the red text and send it to your developer)'; }
+    try { renderer.render(scene, cam); } catch {}
+  }
 });

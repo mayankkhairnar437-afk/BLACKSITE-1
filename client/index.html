@@ -34,19 +34,33 @@
   @media (pointer: coarse) { #mini { width: 110px; height: 110px; } }
   #grain { position: fixed; left: -50%; top: -50%; width: 200%; height: 200%; pointer-events: none; z-index: 1; opacity: .07; mix-blend-mode: overlay; animation: grain .6s steps(4) infinite; }
   @keyframes grain { 0% { transform: translate(0,0) } 25% { transform: translate(-5%,3%) } 50% { transform: translate(4%,-4%) } 75% { transform: translate(-3%,-2%) } 100% { transform: translate(0,0) } }
+  #bU { right: 270px; bottom: 120px; }
+  #menu { background: radial-gradient(ellipse at 50% 30%, #0d2a20 0%, #030806 70%); }
+  #menu input, #menu button { background: #0b1a14; border: 1px solid #2f8a5a; box-shadow: 0 0 10px #0a3 inset; }
+  #hud { background: rgba(0,0,0,.45); padding: 8px 12px; border-left: 3px solid #3a6; max-width: 440px; font-size: 14px; }
+  #hud .hl { font-size: 12px; opacity: .8; margin-bottom: 4px; } #hud .obj span { display: block; font-size: 11px; letter-spacing: 3px; color: #6f9; } #hud .obj em { color: #fd3; font-style: normal; }
+  #bars { position: fixed; left: 14px; bottom: 14px; z-index: 3; width: 260px; pointer-events: none; display: none; }
+  .bar { position: relative; height: 18px; background: #0008; border: 1px solid #3a6; margin-top: 6px; overflow: hidden; }
+  .bar i { position: absolute; left: 0; top: 0; bottom: 0; display: block; background: linear-gradient(90deg, #1a8, #4f9); transition: width .15s; }
+  .bar.hp i { background: linear-gradient(90deg, #c22, #f66); } .bar b { position: relative; font-size: 12px; padding-left: 6px; line-height: 18px; }
+  .bar.low { animation: lowhp .8s infinite; } @keyframes lowhp { 50% { box-shadow: 0 0 12px #f22; } } .tl { margin-top: 6px; font-size: 13px; }
+  #prompt { position: fixed; left: 0; right: 0; bottom: 90px; text-align: center; z-index: 3; pointer-events: none; opacity: 0; transition: opacity .2s; font-size: 18px; text-shadow: 0 0 6px #000; }
+  #prompt b { color: #fd3; }
+  #brief { position: fixed; left: 0; right: 0; top: 22%; text-align: center; pointer-events: none; z-index: 3; opacity: 0; transition: opacity 1s; text-shadow: 0 0 12px #000; }
+  #brief h2 { letter-spacing: 6px; font-size: 34px; margin: 0; color: #8fc; } #brief div { margin-top: 8px; font-size: 15px; }
 </style>
 </head>
 <body>
 <div id="menu">
-  <h1>BLACKSITE-17</h1>
+  <h1>BLACKSITE-17</h1><div style="letter-spacing:5px;opacity:.6;margin:-4px 0 14px;font-size:12px">CO-OP EXTRACTION HORROR</div>
   <input id="name" placeholder="Your name" maxlength="14">
   <button id="create">Create room</button>
   <div><input id="code" placeholder="ROOM CODE" maxlength="4" size="8" style="text-transform:uppercase"> <button id="join">Join</button></div>
   <div id="err"></div>
-  <small>WASD move · Shift sprint · C crouch · Space jump · Hold E revive teammate · F pulse (stuns enemies) · 1-4 emotes · G grab/throw cells</small>
+  <small>WASD move · Shift sprint · C crouch · Space jump · Hold E revive teammate · F pulse (stuns enemies) · 1-4 emotes · G grab/throw cells · Q use tool</small>
 </div>
-<canvas id="mini" width="150" height="150"></canvas><div id="grain"></div><div id="vig"></div><div id="hurt"></div><div id="lobby"></div><div id="fx"></div><div id="hud"></div><div id="msg"></div><div id="cross"></div>
-<button class="tb" id="bJ">JUMP</button><button class="tb" id="bE">E</button><button class="tb" id="bC">CRCH</button><button class="tb" id="bS">RUN</button><button class="tb" id="bF">PULSE</button><button class="tb" id="bM">EMOTE</button><button class="tb" id="bG">GRAB</button>
+<canvas id="mini" width="150" height="150"></canvas><div id="grain"></div><div id="vig"></div><div id="hurt"></div><div id="lobby"></div><div id="fx"></div><div id="hud"></div><div id="bars"></div><div id="prompt"></div><div id="brief"></div><div id="msg"></div><div id="cross"></div>
+<button class="tb" id="bJ">JUMP</button><button class="tb" id="bE">E</button><button class="tb" id="bC">CRCH</button><button class="tb" id="bS">RUN</button><button class="tb" id="bF">PULSE</button><button class="tb" id="bM">EMOTE</button><button class="tb" id="bG">GRAB</button><button class="tb" id="bU">USE</button>
 <script type="importmap">{ "imports": { "three": "/vendor/three/build/three.module.js" } }</script>
 <script type="module" src="/client/main.js"></script>
 </body>

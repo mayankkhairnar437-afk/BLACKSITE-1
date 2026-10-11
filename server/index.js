@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
 import * as C from '../shared/constants.js';
 import { MISSIONS } from '../shared/missions.js';
-import { ITEMS } from '../shared/items.js';
+import { ITEMS, PALETTE } from '../shared/items.js';
 import { MAPS, BONUS } from '../shared/maps.js';
 import { get as getSave, rank, flush } from './save.js';
 
@@ -36,7 +36,7 @@ function makeCode() {
 }
 function resetRoom(r) {
   r.phase = 'lobby'; r.map = MAPS[1]; r.haz = []; r.hzOut = []; r.doorOpen = false;
-  r.grace = 0; r.inv = null; r.invS = 0; r.invertOn = 0;
+  r.grace = 0; r.decoys = []; r.inv = null; r.invS = 0; r.invertOn = 0;
   r.cells = []; r.cellsNeed = 0; r.cellsDone = 0; r.waterZ = 99; r.windOn = 0; r.windV = [0, 0]; r.windS = 0; r.wind = null; r.end = null; r.endAt = 0; r.res = null;
   r.enemies = []; r.blackout = 0; r.ev = []; r.plates = []; r.cores = []; r.caches = [];
   r.need = 0; r.got = 0; r.cacheGot = 0; r.openAt = 0; r.platesDone = false;
@@ -82,7 +82,9 @@ wss.on('connection', ws => {
     if (m.t === 'ready' && room.phase === 'lobby') me.ready = !me.ready;
     if (m.t === 'pick' && room.phase === 'lobby' && me.id === hostId(room)) room.mi = num(m.i, 0, MISSIONS.length - 1) | 0;
     if ((m.t === 'buy' || m.t === 'equip') && room.phase === 'lobby') shop(me, m);
+    if (m.t === 'color' && room.phase === 'lobby') { const s = getSave(me.token); if (m.id === '' || PALETTE.includes(m.id)) s.col = m.id; flush(); applyLoadout(me); sendSave(me); }
     if (m.t === 'grab' && room.phase === 'mission' && !room.end && !me.down) grab(room, me);
+    if (m.t === 'use' && room.phase === 'mission' && !room.end && !me.down) useTool(room, me);
     if (m.t === 'emote' && !me.down && Date.now() - (me.emAt || 0) > 1000) { me.em = num(m.i, 1, 4) | 0; me.emAt = Date.now(); }
   });
   ws.on('close', () => {
@@ -239,8 +241,22 @@ function stepCells(r, dt) {
   }
 }
 
+// ---------- Tools (Q): Medkit and Noise Decoy ----------
+function useTool(r, p) {
+  if (!(p.charges > 0)) return;
+  if (p.gear === 'medkit') {
+    const t = [...r.players.values()].filter(q => dist(q, p.x, p.z) < 2.5 && (q.down || q.hp < C.MAX_HP)).sort((a, b) => (b.down - a.down) || (a.hp - b.hp))[0];
+    if (!t) return;
+    if (t.down) { t.down = false; t.hp = 30; t.rp = 0; if (t !== p) p.st.rev++; } else t.hp = Math.min(C.MAX_HP, t.hp + 45);
+    p.charges--; ev(r, 'pulse', 0, { x: p.x, z: p.z });
+  } else if (p.gear === 'decoy') {
+    r.decoys.push({ x: p.x, z: p.z, until: Date.now() + 7000 }); if (r.decoys.length > 3) r.decoys.shift();
+    p.charges--; ev(r, 'pulse', 0, { x: p.x, z: p.z });
+  }
+}
+
 // ---------- Shop / loadout ----------
-function applyLoadout(p) { const s = getSave(p.token); p.gear = s.gear; p.hat = s.hat; }
+function applyLoadout(p) { const s = getSave(p.token); p.gear = s.gear; p.hat = s.hat; p.color = PALETTE.includes(s.col) ? s.col : COLORS[(p.id - 1) % 8]; p.charges = 2; }
 function shop(p, m) {
   const s = getSave(p.token), it = Object.hasOwn(ITEMS, m.id) ? ITEMS[m.id] : null;
   if (m.t === 'buy') { if (it && !s.owned.includes(m.id) && s.credits >= it.cost) { s.credits -= it.cost; s.owned.push(m.id); } }
@@ -270,7 +286,7 @@ function route(r, e, tx, tz) {
 // ---------- Missions, objectives, rewards, saving ----------
 const hostId = r => r.players.size ? Math.min(...r.players.keys()) : 0;
 const multOf = r => r.openAt ? 1 + Math.min(1, (Date.now() - r.openAt) / 120000) : 1;   // staying longer = bigger bonus (and faster scares)
-function sendSave(p) { const s = getSave(p.token); send(p.ws, { t: 'save', credits: s.credits, xp: s.xp, rank: rank(s), wins: s.wins, missions: s.missions, owned: s.owned, gear: s.gear, hat: s.hat }); }
+function sendSave(p) { const s = getSave(p.token); send(p.ws, { t: 'save', credits: s.credits, xp: s.xp, rank: rank(s), wins: s.wins, missions: s.missions, owned: s.owned, gear: s.gear, hat: s.hat, col: s.col }); }
 function objText(r) {
   if (r.phase !== 'mission') return 'Lobby';
   if (!r.doorOpen) {
@@ -300,7 +316,7 @@ function startMission(r) {
   addEnemy(r, 'drone', 15, 8, [[15, 8], [15, 3]]);   // East Wing patrol   // patrols the door side, far from the spawn   // routes kept clear of every facility's walls
   addEnemy(r, 'drone', 6, -16, [[6, -16], [-6, -16], [-6, -4], [6, -4]]);   // Core Chamber loop
   for (const [k, x, z, path] of [...r.map.extra, ...(BONUS[r.map.id] || [])]) addEnemy(r, k, x, z, path || null);
-  let i = 0; for (const p of r.players.values()) { spawn(p, i++); p.st = { rev: 0, taken: 0, downs: 0, picks: 0 }; }
+  r.decoys = []; let i = 0; for (const p of r.players.values()) { spawn(p, i++); p.charges = 2; p.st = { rev: 0, taken: 0, downs: 0, picks: 0 }; }
 }
 function lobbyTick(r) { if (r.phase === 'lobby' && r.players.size && [...r.players.values()].every(p => p.ready)) startMission(r); }
 function finish(r, win, now) {
@@ -355,6 +371,8 @@ function stepEnemies(r, dt, list) {
     if (e.k === 'unknown') continue;
     let tgt = null, bd = 1e9;
     for (const p of list) if (!p.down) { const d = dist(p, e.x, e.z); if (d < bd) { bd = d; tgt = p; } }
+    const tnow = Date.now();   // noise decoys lure enemies that are within 16m
+    for (const dc of r.decoys) if (tnow < dc.until) { const d = dist(dc, e.x, e.z); if (d < 16 && d < bd + 6) { bd = d; tgt = { x: dc.x, z: dc.z, y: 0, yaw: 0, id: -1, down: false }; } }
     let tx, tz, sp;
     if (e.k === 'drone') {
       if (tgt && bd < 9) { tx = tgt.x; tz = tgt.z; sp = 3.4; }
@@ -411,18 +429,19 @@ function director(r, now, list) {
 let last = Date.now();
 setInterval(() => {
   const now = Date.now(), dt = Math.min(0.1, (now - last) / 1000); last = now;
-  for (const r of rooms.values()) {
+  for (const r of rooms.values()) try {
     step(r, dt);
     const snap = JSON.stringify({
       t: 's', door: r.doorOpen && !(Date.now() < r.lockUntil), end: r.end, bo: Date.now() < r.blackout ? 1 : 0, ev: r.ev,
-      ph: r.phase, mi: r.mi, fac: r.map.id, hz: r.hzOut.map(h => ({ k: h.k, x: +h.x.toFixed(1), z: +h.z.toFixed(1), r: h.rad || 0, w: h.w || 0, d: h.d || 0, on: h.on ? 1 : 0 })), host: hostId(r), mult: +multOf(r).toFixed(2), obj: graceText(r) + lockText(r) + objText(r) + windText(r), ce: r.cells.map(c => [+c.x.toFixed(1), +c.y.toFixed(1), +c.z.toFixed(1)]), cn: r.cellsNeed, res: r.res, cfg: { pl: r.plates, co: r.cores, ca: r.caches },
-      en: r.enemies.map(e => ({ id: e.id, k: e.k, x: +e.x.toFixed(2), z: +e.z.toFixed(2), s: e.stun > 0 ? 1 : 0 })),
-      p: [...r.players.values()].map(p => ({ id: p.id, n: p.name, c: p.color, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(2), hp: Math.round(p.hp), d: p.down ? 1 : 0, rp: +(p.rp / C.REVIVE_TIME).toFixed(2), cd: +p.cd.toFixed(1), rd: p.ready ? 1 : 0, h: p.hat || '', em: p.em && Date.now() - p.emAt < 3000 ? p.em : 0 }))
+      ph: r.phase, mi: r.mi, fac: r.map.id, hz: r.hzOut.map(h => ({ k: h.k, x: +h.x.toFixed(1), z: +h.z.toFixed(1), r: h.rad || 0, w: h.w || 0, d: h.d || 0, on: h.on ? 1 : 0 })), host: hostId(r), mult: +multOf(r).toFixed(2), obj: graceText(r) + lockText(r) + objText(r) + windText(r), ce: r.cells.map(c => [+c.x.toFixed(1), +c.y.toFixed(1), +c.z.toFixed(1), c.by]), cn: r.cellsNeed, dc: r.decoys.filter(d => Date.now() < d.until).map(d => [+d.x.toFixed(1), +d.z.toFixed(1)]), res: r.res, cfg: { pl: r.plates, co: r.cores, ca: r.caches },
+      en: r.enemies.map(e => ({ id: e.id, k: e.k, x: +e.x.toFixed(2), z: +e.z.toFixed(2), s: e.stun > 0 ? 1 : 0, a: e.wind > 0 ? 1 : e.dash > 0 ? 2 : ((e.k === 'spitter' || e.k === 'sentry' || e.k === 'phantom') && e.cool > 0 && e.cool < 1) ? 1 : 0 })),
+      p: [...r.players.values()].map(p => ({ id: p.id, n: p.name, c: p.color, x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2), yaw: +p.yaw.toFixed(2), hp: Math.round(p.hp), d: p.down ? 1 : 0, rp: +(p.rp / C.REVIVE_TIME).toFixed(2), cd: +p.cd.toFixed(1), rd: p.ready ? 1 : 0, ch: p.charges || 0, ge: p.gear || '', h: p.hat || '', em: p.em && Date.now() - p.emAt < 3000 ? p.em : 0 }))
     });
     for (const p of r.players.values()) if (p.ws.readyState === 1) p.ws.send(snap);
     r.ev = [];
-  }
+  } catch (e) { console.error('room error', e); }
 }, 1000 / C.TICK_HZ);
 
+process.on('uncaughtException', e => console.error('uncaught', e));
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`BLACKSITE-17 running: http://localhost:${PORT}`));
